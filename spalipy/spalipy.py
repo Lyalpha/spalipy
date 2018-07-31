@@ -41,10 +41,9 @@ class Spalipy:
         specifies a fits file.
     ndets : int or float, optional
         The number of detections to use in the initial quad
-        determination and detection matching. Should be greater than
-        C(`nquaddets`, 4). If 0 < `ndets` < 1 then will use this
-        fraction of the shortest of `source_cat` and `template_cat` as
-        `ndets`.
+        determination and detection matching. If 0 < `ndets` < 1 then
+        will use this fraction of the shortest of `source_cat` and
+        `template_cat` as `ndets`.
     nquaddets : integer
         The number of detections to make quads from.
     minquadsep : float
@@ -74,7 +73,7 @@ class Spalipy:
     """
 
     def __init__(self, source_cat, template_cat, source_fits,
-                 shape=None, hdu=0, ndets=0.5, nquaddets=15,
+                 shape=None, hdu=0, ndets=0.5, nquaddets=20,
                  minquadsep=50, minmatchdist=5, minnmatch=200,
                  spline_order=3, output_filename=None, overwrite=True):
 
