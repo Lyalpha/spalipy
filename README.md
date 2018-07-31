@@ -3,7 +3,7 @@
 Detection-based astronomical image registration.
 
 A slimmed-down, python 3 version of
-[aplipy2.0](https://obswww.unige.ch/~tewes/alipy/) that includes an
+[alipy2.0](https://obswww.unige.ch/~tewes/alipy/) that includes an
 additional warping of the transformation via splines to achieve
 accurate registration in the case of non-homogeneous coordinate
 transforms. This is particularly useful in the case of optically
@@ -58,7 +58,8 @@ columns `X_IMAGE`, `Y_IMAGE`, `FLUX_BEST`, `FWHM_IMAGE`, `FLAGS`.*
 Perform the alignment from the interpreter
 
 ```
-s = Spalipy.spalipy("source.cat", "template.cat", "source.fits",
+from spalipy import spalipy
+s = spalipy.Spalipy("source.cat", "template.cat", "source.fits",
     		    output_filename="source-aligned.fits")
 s.main()
 ```
