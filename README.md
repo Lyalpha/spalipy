@@ -58,7 +58,7 @@ columns `X_IMAGE`, `Y_IMAGE`, `FLUX_BEST`, `FWHM_IMAGE`, `FLAGS`.*
 Perform the alignment from the interpreter
 
 ```
-s = Spalipy.spalipy("source_cat", "template_cat", "source.fits",
+s = Spalipy.spalipy("source.cat", "template.cat", "source.fits",
     		    output_filename="source-aligned.fits")
 s.main()
 ```
@@ -74,7 +74,7 @@ From the command line (make a link to spalipy.py in one of your PATH
 locations)
 
 ```
-$ python spalipy.py source_cat template_cat source_fits source-aligned.fits
+$ python spalipy.py source.cat template.cat source.fits source-aligned.fits
 ```
 *output_filename is required for the command line since it doesn't make
 sense to hold it in memory.*
