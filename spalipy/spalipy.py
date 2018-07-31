@@ -68,7 +68,7 @@ class Spalipy:
 
     Example
     -------
-    s = spalipy.Spalipy("source.cat", "template.cat")
+    s = spalipy.Spalipy("source.cat", "template.cat", "source.fits")
     s.main()
     """
 
@@ -230,12 +230,20 @@ class Spalipy:
             dist = mindist[bi]
             passed = False
             if dist < minquaddist:
-                self.nmatch, self.source_matchdets, self.template_matchdets = \
+                nmatch, source_matchdets, template_matchdets = \
                     self.match_stars(transform, minmatchdist=minmatchdist)
-                if self.nmatch > minnmatch:
+                if nmatch > minnmatch:
                     passed = True
                     break
         if passed:
+            # Refine the transformation using the matched detections
+            source_match_coo = get_det_coords(source_matchdets)
+            template_match_coo = get_det_coords(template_matchdets)
+            transform = calc_affine_transform(source_match_coo,
+                                              template_match_coo)
+            # Store the final matched detection tables and transform
+            self.nmatch, self.source_matchdets, self.template_matchdets = \
+                self.match_stars(transform, minmatchdist=minmatchdist)
             self.affine_transform = transform
 
     def find_spline_transform(self, spline_order=None):
