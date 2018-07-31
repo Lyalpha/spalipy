@@ -68,10 +68,10 @@ not written to disk but still accessible via
 `s.source_data_transform`.*
 *See the contents of `main()` for ways to rerun sections of the
 algorithm individually, if needed - for example one could rerun
-`find_spline_transform()` with a different order*
+`find_spline_transform()` with a different order.*
 *Use `print(s.__doc__)` (or `s?` in iPython) for parameter information.*
 
-From the command line (make a link to spalipy.py in one of your PATH
+From the command line (make a link to spalipy.py in one of your `PATH`
 locations)
 
 ```
