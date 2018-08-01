@@ -271,9 +271,15 @@ class Spalipy:
                                                         - source_coo[:, 1]))
 
         # Make a callable to map our coordinates using these splines
-        def spline_transform(xy):
-            return (xy[0] - self.sbs_x.ev(xy[0], xy[1]),
-                    xy[1] - self.sbs_y.ev(xy[0], xy[1]))
+        def spline_transform(xy, relative=False):
+            # Returns the relative shift of xy coordinates if relative is True,
+            # otherwise return the value of the transformed coordinates
+            x0 = xy[0]
+            y0 = xy[1]
+            if relative is True:
+                x0 = y0 = 0
+            return np.array((x0 - self.sbs_x.ev(xy[0], xy[1]),
+                             y0 - self.sbs_y.ev(xy[0], xy[1])))
 
         self.spline_transform = spline_transform
 
@@ -295,20 +301,21 @@ class Spalipy:
             print("affine_transform is not defined")
             return
 
-        matrix, offset = self.affine_transform.inverse().matrix_form()
-
         source_data = self.source_fits[self.hdu].data.T
-        source_data_transform = interpolation.affine_transform(
-            source_data, matrix, offset=offset, output_shape=self.shape)
 
         if self.spline_transform is not None:
+            def final_transform(xy):
+                return (self.affine_transform.inverse().apply_transform(xy)
+                        + (self.spline_transform(xy, relative=True)))
             xx, yy = np.meshgrid(np.arange(self.shape[0]),
                                  np.arange(self.shape[1]))
-            spline_coords_shift = self.spline_transform((xx, yy))
-            source_data_transform = map_coordinates(source_data_transform,
+            spline_coords_shift = final_transform((xx, yy))
+            source_data_transform = map_coordinates(source_data,
                                                     spline_coords_shift)
-            del xx
-            del yy
+        else:
+            matrix, offset = self.affine_transform.inverse().matrix_form()
+            source_data_transform = interpolation.affine_transform(
+                source_data, matrix, offset=offset, output_shape=self.shape)
 
         self.source_data_transform = source_data_transform
 
@@ -402,12 +409,18 @@ class AffineTransform:
 
     def apply_transform(self, xy):
         """
-        Applies the transform to an array of (x, y) points
+        Applies the transform to an array of x, y points
         """
-        xy = np.atleast_2d(xy)
-        xn = self.v[0]*xy[:, 0] - self.v[1]*xy[:, 1] + self.v[2]
-        yn = self.v[1]*xy[:, 0] + self.v[0]*xy[:, 1] + self.v[3]
-        return np.column_stack((xn, yn))
+        xy = np.asarray(xy)
+        # Can consistently refer to x and y as xy[0] and xy[1] if xy is
+        # 2D (1D coords) or 3D (2D coords) if we transpose the 2D case of xy
+        if xy.ndim == 2:
+            xy = xy.T
+        xn = self.v[0]*xy[0] - self.v[1]*xy[1] + self.v[2]
+        yn = self.v[1]*xy[0] + self.v[0]*xy[1] + self.v[3]
+        if xy.ndim == 2:
+            return np.column_stack((xn, yn))
+        return np.stack((xn, yn))
 
 
 def calc_affine_transform(source_coo, template_coo):
