@@ -53,7 +53,7 @@ class Spalipy:
         Minimum matching distance between coordinates after the
         initial transformation to be considered a match.
     minnmatch : int
-        Minimum number of matched stars for the initial transformation
+        Minimum number of matched dets for the initial transformation
         to be considered sucessful.
     spline_order : int
         The order in `x` and `y` of the spline surfaces used to
@@ -144,7 +144,7 @@ class Spalipy:
         self.find_affine_transform()
 
         if self.affine_transform is None:
-            print('{} matched stars is less than minimum required ({})'.format(
+            print('{} matched dets is less than minimum required ({})'.format(
                 self.nmatch, self.minnmatch))
             return
 
@@ -218,7 +218,7 @@ class Spalipy:
         mindist = np.min(dists, axis=0)
         best = np.argsort(mindist)
 
-        # Use best initial guess at transformation to get list of matched stars
+        # Use best initial guess at transformation to get list of matched dets
         for i in range(min(maxcands, len(best))):
             bi = best[i]
             template_quad = self.template_quadlist[minddist_idx[bi]]
@@ -231,7 +231,7 @@ class Spalipy:
             passed = False
             if dist < minquaddist:
                 nmatch, source_matchdets, template_matchdets = \
-                    self.match_stars(transform, minmatchdist=minmatchdist)
+                    self.match_dets(transform, minmatchdist=minmatchdist)
                 if nmatch > minnmatch:
                     passed = True
                     break
@@ -243,7 +243,7 @@ class Spalipy:
                                               template_match_coo)
             # Store the final matched detection tables and transform
             self.nmatch, self.source_matchdets, self.template_matchdets = \
-                self.match_stars(transform, minmatchdist=minmatchdist)
+                self.match_dets(transform, minmatchdist=minmatchdist)
             self.affine_transform = transform
 
     def find_spline_transform(self, spline_order=None):
@@ -318,7 +318,7 @@ class Spalipy:
         else:
             matrix, offset = self.affine_transform.inverse().matrix_form()
             source_data_transform = interpolation.affine_transform(
-                source_data, matrix, offset=offset, output_shape=self.shape)
+                source_data, matrix, offset=offset, output_shape=self.shape).T
 
         self.source_data_transform = source_data_transform
 
@@ -327,7 +327,7 @@ class Spalipy:
             self.source_fits.writeto(self.output_filename,
                                      overwrite=self.overwrite)
 
-    def match_stars(self, transform, minmatchdist=None):
+    def match_dets(self, transform, minmatchdist=None):
         """
         Match the source and template detections using `transform`
 
@@ -347,10 +347,10 @@ class Spalipy:
         sorted_idx = np.argsort(dists[passed, :])
 
         nmatched = np.sum(passed)
-        source_matchstars = self.source_cat[passed]
-        template_matchstars = self.template_cat[sorted_idx[:, 0]]
+        source_matchdets = self.source_cat[passed]
+        template_matchdets = self.template_cat[sorted_idx[:, 0]]
 
-        return nmatched, source_matchstars, template_matchstars
+        return nmatched, source_matchdets, template_matchdets
 
     def trim_cat(self, cat, minfwhm=2, maxflag=4):
         """
@@ -458,7 +458,7 @@ def get_det_coords(cat):
 
 def quad(combo, dists):
     """
-    Create a hash from a combination of four stars (a "quad").
+    Create a hash from a combination of four dets (a "quad").
 
     References
     ----------
@@ -572,7 +572,7 @@ if __name__ == '__main__':
                         ' matching distance between coordinates after the '
                         'initial transformation to be considered a match.')
     parser.add_argument('--minnmatch', type=int, default=200, help='Minimum '
-                        'number of matched stars for the initial '
+                        'number of matched dets for the initial '
                         'transformation to be considered sucessful.')
     parser.add_argument('--spline-order', type=int, default=3,
                         dest='spline_order', help='The order in `x` and `y` of'
