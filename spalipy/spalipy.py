@@ -333,6 +333,9 @@ class Spalipy:
         transform : :class:`spalipy.AffineTransform`
             The transformation to use.
         """
+        if minmatchdist is None:
+            minmatchdist = self.minmatchdist
+
         source_coo_trans = transform.apply_transform(self.source_coo)
 
         dists = distance.cdist(source_coo_trans, self.template_coo)
