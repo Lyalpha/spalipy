@@ -452,7 +452,8 @@ def calc_affine_transform(source_coo, template_coo):
 
 
 def get_det_coords(cat):
-    return cat[X, Y].as_array().view((float, 2))
+    cat_arr = cat[X, Y].as_array()
+    return cat_arr.view((cat_arr.dtype[0], 2))
 
 
 def quad(combo, dists):
