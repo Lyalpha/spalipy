@@ -281,8 +281,13 @@ class Spalipy:
             y0 = xy[1]
             if relative is True:
                 x0 = y0 = 0
-            return np.array((x0 - self.sbs_x.ev(xy[0], xy[1]),
-                             y0 - self.sbs_y.ev(xy[0], xy[1])))
+            if xy.ndim == 2:
+                xy = xy.T
+            new_coo = np.array((x0 - self.sbs_x.ev(xy[0], xy[1]),
+                                y0 - self.sbs_y.ev(xy[0], xy[1])))
+            if xy.ndim == 2:
+                return new_coo.T
+            return new_coo
 
         self.spline_transform = spline_transform
 
@@ -312,7 +317,7 @@ class Spalipy:
                         + (self.spline_transform(xy, relative=True)))
             xx, yy = np.meshgrid(np.arange(self.shape[0]),
                                  np.arange(self.shape[1]))
-            spline_coords_shift = final_transform((xx, yy))
+            spline_coords_shift = final_transform(np.array([xx, yy]))
             source_data_transform = map_coordinates(source_data,
                                                     spline_coords_shift)
         else:
