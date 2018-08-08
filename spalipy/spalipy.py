@@ -6,7 +6,7 @@ from astropy.table import Table
 import numpy as np
 from scipy import linalg, interpolate
 from scipy.ndimage import interpolation, map_coordinates
-from scipy.spatial import distance
+from scipy.spatial import cKDTree, distance
 
 # SExtractor column definitions
 X = 'X_IMAGE'
@@ -347,17 +347,23 @@ class Spalipy:
         source_coo_trans = transform.apply_transform(self.source_coo)
 
         dists = distance.cdist(source_coo_trans, self.template_coo)
-        mindists = np.min(dists, axis=1)
-        passed = mindists <= minmatchdist
-        sorted_idx = np.argsort(dists[passed, :])
+        dists_argsort = np.argsort(dists, axis=1)
+        dists_sort = dists[np.arange(np.shape(dists)[0])[:, np.newaxis],
+                           dists_argsort]
+        # For a match, we require the distance to be within our limit, and
+        # that the second nearest object is double that distance. This is a
+        # crude method to alleviate double matches, maybe caused by agressive
+        # segmentation in the source catalogues.
+        passed = ((dists_sort[:, 0] <= minmatchdist)
+                  & (dists_sort[:, 1] >= 2. * minmatchdist))
 
         nmatched = np.sum(passed)
         source_matchdets = self.source_cat[passed]
-        template_matchdets = self.template_cat[sorted_idx[:, 0]]
+        template_matchdets = self.template_cat[dists_argsort[passed, 0]]
 
         return nmatched, source_matchdets, template_matchdets
 
-    def trim_cat(self, cat, minfwhm=2, maxflag=4):
+    def trim_cat(self, cat, minfwhm=2, maxflag=7, minsep=None):
         """
         Trim a detection catalogue based on some SExtractor values.
         Sort this by the brightest objects then cut to the top
@@ -369,12 +375,23 @@ class Spalipy:
             The minimum value of FWHM for a valid source.
         maxflag : int, optional
             The maximum value of FLAGS for a valid source.
+        minsep : float, optional
+            The minimum separation between coordinates in the catalogue.
+            If left as default ``None``, this is set to
+            ``2 * self.minmatchdist``.
         """
+        if minsep is None:
+            minsep = 2 * self.minmatchdist
+
         cat = cat[COLUMNS]
-        cat = cat[(cat[FWHM] > minfwhm)
-                  & (cat[FLAGS] < maxflag)]
+        cat = cat[(cat[FWHM] >= minfwhm)
+                  & (cat[FLAGS] <= maxflag)]
         cat.sort(FLUX)
         cat.reverse()
+        tree = cKDTree(get_det_coords(cat))
+        close_pairs = tree.query_pairs(minsep)
+        to_remove = [det for pair in close_pairs for det in pair]
+        cat.remove_rows(np.unique(to_remove))
         cat = cat[:self.ndets]
 
         return cat
