@@ -31,7 +31,7 @@ A `source` image is transformed to the pixel-coordinate system of a
 `template` image using their respective detection catalogues.
 
 Matching quads of stars between the two catalogues are used to match
-detecions between the images. An affine transformation is used to best
+detections between the images. An affine transformation is used to best
 match these coordinates using rotation, scale and translation only.
 
 The remaining residuals between the matched detection coordinates
@@ -46,13 +46,13 @@ size source and template.
 
 ## example
 
-Create two sextractor catalogues for our `source` and `template`
+Create two `SExtractor` catalogues for our `source` and `template`
 
 ```
 sex -c /path/to/my/config source.fits[0] -CATALOG_NAME source.cat
 sex -c /path/to/my/config template.fits[0] -CATALOG_NAME template.cat
 ```
-*Note that, at a minimum, the SExtracted catalogues must contain the
+*Note that, at a minimum, the `SExtractor` catalogues must contain the
 columns `X_IMAGE`, `Y_IMAGE`, `FLUX_BEST`, `FWHM_IMAGE`, `FLAGS`.*
 
 Perform the alignment from the interpreter

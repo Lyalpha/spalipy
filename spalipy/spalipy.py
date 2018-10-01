@@ -315,6 +315,7 @@ class Spalipy:
             def final_transform(xy):
                 return (self.affine_transform.inverse().apply_transform(xy)
                         + (self.spline_transform(xy, relative=True)))
+            self.final_transform = final_transform
             xx, yy = np.meshgrid(np.arange(self.shape[0]),
                                  np.arange(self.shape[1]))
             spline_coords_shift = final_transform(np.array([xx, yy]))
