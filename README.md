@@ -40,6 +40,10 @@ construct 2D spline surfaces to represent the spatially-varying
 residuals in `x` and `y` axes. These surfaces are used to calculate
 the correction needed to properly register the images.
 
+Note: the affine transformation uses `scipy.interpolation.affine_transform`
+which doesn't handle nans properly, therefore replace all nan values
+in the input image prior to running `spalipy`.
+
 Takes approximately 25 seconds on an i7 laptop for a 50M (~8000x6000)
 size source and template.
 
