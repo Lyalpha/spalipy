@@ -82,15 +82,15 @@ class Spalipy:
 
         if isinstance(source_cat, str):
             source_cat = Table.read(source_cat, format='ascii.sextractor')
-        self.source_cat_full = source_cat
+        self.source_cat_full = source_cat.copy()
 
         if isinstance(template_cat, str):
             template_cat = Table.read(template_cat, format='ascii.sextractor')
-        self.template_cat_full = template_cat
+        self.template_cat_full = template_cat.copy()
 
         if isinstance(source_fits, str):
             source_fits = fits.open(source_fits)
-        self.source_fits = source_fits
+        self.source_fits = source_fits.copy()
 
         hdr = None
         if isinstance(shape, str):
