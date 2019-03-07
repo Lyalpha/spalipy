@@ -27,10 +27,10 @@ class Spalipy:
     source_cat, template_cat : str or :class:`astropy.table.Table`
         The detection catalogue for the images. If `str` they should
         be the filenames of the SExtractor catalogues.
-    source_fits : str or :class:`astropy.io.fits`
+    source_fits : :class:`astropy.io.fits` or str
         The source image to be transformed.
     shape : None, str or :class:`astropy.io.fits.hdu.hdulist.HDUList`,
-    optional
+        optional
         The shape of the output image. If None, output shape is the
         same as `source_fits`. Otherwise pass a fits filename or
         class:`astropy.io.fits` instance and will take the shape from
@@ -44,20 +44,21 @@ class Spalipy:
         determination and detection matching. If 0 < `ndets` < 1 then
         will use this fraction of the shortest of `source_cat` and
         `template_cat` as `ndets`.
-    nquaddets : integer
+    nquaddets : int, optional
         The number of detections to make quads from.
-    minquadsep : float
+    minquadsep : float, optional
         Minimum distance in pixels between detections in a quad for it
         to be valid.
-    minmatchdist : float
+    minmatchdist : float, optional
         Minimum matching distance between coordinates after the
         initial transformation to be considered a match.
-    minnmatch : int
+    minnmatch : int, optional
         Minimum number of matched dets for the initial transformation
         to be considered sucessful.
-    spline_order : int
+    spline_order : int, optional
         The order in `x` and `y` of the spline surfaces used to
-        correct the affine transformation.
+        correct the affine transformation. If `0` then no spline
+        correction is performed.
     output_filename : None or str, optional
         The filename to write the transformed source file to. If None
         the file will not be written, the transformed data can be
@@ -130,6 +131,10 @@ class Spalipy:
         self.template_matchdets = None
         self.affine_transform = None
         self.spline_transform = None
+        self.sbs_x = None
+        self.sbs_y = None
+        self.source_data_transform = None
+        self.final_transform = None
 
         self.output_filename = output_filename
         self.overwrite = overwrite
@@ -138,14 +143,15 @@ class Spalipy:
         """
         Does everything
         """
+
         self.make_quadlist('source')
         self.make_quadlist('template')
 
         self.find_affine_transform()
 
         if self.affine_transform is None:
-            print('{} matched dets is less than minimum required ({})'.format(
-                self.nmatch, self.minnmatch))
+            print('{} matched dets is less than minimum required ({})'
+                  .format(self.nmatch, self.minnmatch))
             return
 
         if self.spline_order > 0:
@@ -163,7 +169,16 @@ class Spalipy:
         image : str
             Should be "source" or "template" to indicate for which image to
             determine quadlist for.
+        nquaddets : None or int, optional
+            The number of detections to make quads from. If `None`, inherits
+            from the class instance attribute.
+        minquadsep : float, optional
+            Minimum distance in pixels between detections in a quad for it
+            to be valid. If `None`, inherits from the class instance
+            attribute.
+
         """
+
         if image == 'source':
             coo = self.source_coo
         elif image == 'template':
@@ -199,12 +214,21 @@ class Spalipy:
 
         Parameters
         ----------
+        minmatchdist : None or float, optional
+            Minimum matching distance between coordinates after the
+            initial transformation to be considered a match. If `None`,
+            inherits from the class instance attribute.
+        minnmatch : None or int, optional
+            Minimum number of matched dets for the initial transformation
+            to be considered sucessful. If `None`, inherits from the class
+            instance attribute.
         maxcands : int, optional
             Max number of quadlist candidates to loop through to find initial
             transformation.
         minquaddist : float, optional
             Not really sure what this is, just copied from alipy.
         """
+
         if minmatchdist is None:
             minmatchdist = self.minmatchdist
         if minnmatch is None:
@@ -228,30 +252,32 @@ class Spalipy:
             transform = calc_affine_transform(source_quad[0][:2],
                                               template_quad[0][:2])
             dist = mindist[bi]
-            passed = False
             if dist < minquaddist:
                 nmatch, source_matchdets, template_matchdets = \
                     self.match_dets(transform, minmatchdist=minmatchdist)
                 if nmatch > minnmatch:
-                    passed = True
-                    break
-        if passed:
-            # Refine the transformation using the matched detections
-            source_match_coo = get_det_coords(source_matchdets)
-            template_match_coo = get_det_coords(template_matchdets)
-            transform = calc_affine_transform(source_match_coo,
-                                              template_match_coo)
-            # Store the final matched detection tables and transform
-            self.nmatch, self.source_matchdets, self.template_matchdets = \
-                self.match_dets(transform, minmatchdist=minmatchdist)
-            self.affine_transform = transform
+                    # Refine the transformation using the matched detections
+                    source_match_coo = get_det_coords(source_matchdets)
+                    template_match_coo = get_det_coords(template_matchdets)
+                    transform = calc_affine_transform(source_match_coo,
+                                                      template_match_coo)
+                    # Store the final matched detection tables and transform
+                    self.nmatch, self.source_matchdets, self.template_matchdets = \
+                        self.match_dets(transform, minmatchdist=minmatchdist)
+                    self.affine_transform = transform
 
     def find_spline_transform(self, spline_order=None):
         """
         Determine the residual `x` and `y` offsets between matched coordinates
         after affine transformation and fit 2D spline surfaces to describe the
         spatially-varying correction to be applied.
+
+        spline_order : None or int, optional
+            The order in `x` and `y` of the spline surfaces used to correct the
+            affine transformation. If `None`, inherits from the class instance
+            attribute.
         """
+
         if spline_order is None:
             spline_order = self.spline_order
 
@@ -296,6 +322,7 @@ class Spalipy:
         Perform the alignment and write the transformed source
         file.
         """
+
         if hdu is None:
             hdu = self.hdu
 
@@ -309,7 +336,7 @@ class Spalipy:
             print("affine_transform is not defined")
             return
 
-        source_data = self.source_fits[self.hdu].data.T
+        source_data = self.source_fits[hdu].data.T
 
         if self.spline_transform is not None:
             def final_transform(xy):
@@ -330,8 +357,8 @@ class Spalipy:
 
         if output_filename is not None:
             self.source_fits[hdu].data = source_data_transform
-            self.source_fits.writeto(self.output_filename,
-                                     overwrite=self.overwrite)
+            self.source_fits.writeto(output_filename,
+                                     overwrite=overwrite)
 
     def match_dets(self, transform, minmatchdist=None):
         """
@@ -341,7 +368,12 @@ class Spalipy:
         ----------
         transform : :class:`spalipy.AffineTransform`
             The transformation to use.
+        minmatchdist : None or float, optional
+            Minimum matching distance between coordinates after the
+            initial transformation to be considered a match. If `None`,
+            inherits from the class instance attribute.
         """
+
         if minmatchdist is None:
             minmatchdist = self.minmatchdist
 
@@ -372,6 +404,8 @@ class Spalipy:
 
         Parameters
         ----------
+        cat : :class:`astropy.table.Table`
+            The detection catalogue to trim.
         minfwhm : float, optional
             The minimum value of FWHM for a valid source.
         maxflag : int, optional
@@ -381,6 +415,7 @@ class Spalipy:
             If left as default ``None``, this is set to
             ``2 * self.minmatchdist``.
         """
+
         if minsep is None:
             minsep = 2 * self.minmatchdist
 
@@ -417,6 +452,7 @@ class AffineTransform:
         """
         Returns the inverse transform
         """
+
         # To represent affine transformations with matrices,
         # we can use homogeneous coordinates.
         homo = np.array([
@@ -433,6 +469,7 @@ class AffineTransform:
         Special output for scipy.ndimage.interpolation.affine_transform
         Returns (matrix, offset)
         """
+
         return (np.array([[self.v[0], -self.v[1]],
                           [self.v[1], self.v[0]]]), self.v[2:4])
 
@@ -440,6 +477,7 @@ class AffineTransform:
         """
         Applies the transform to an array of x, y points
         """
+
         xy = np.asarray(xy)
         # Can consistently refer to x and y as xy[0] and xy[1] if xy is
         # 2D (1D coords) or 3D (2D coords) if we transpose the 2D case of xy
@@ -456,17 +494,18 @@ def calc_affine_transform(source_coo, template_coo):
     """
     Calculates the affine transformation
     """
-    l = len(source_coo)
+
+    n = len(source_coo)
     template_matrix = template_coo.ravel()
-    source_matrix = np.zeros((l*2, 4))
+    source_matrix = np.zeros((n*2, 4))
     source_matrix[::2, :2] = np.column_stack((source_coo[:, 0],
                                               - source_coo[:, 1]))
     source_matrix[1::2, :2] = np.column_stack((source_coo[:, 1],
                                                source_coo[:, 0]))
-    source_matrix[:, 2] = np.tile([1, 0], l)
-    source_matrix[:, 3] = np.tile([0, 1], l)
+    source_matrix[:, 2] = np.tile([1, 0], n)
+    source_matrix[:, 3] = np.tile([0, 1], n)
 
-    if l == 2:
+    if n == 2:
         transform = linalg.solve(source_matrix, template_matrix)
     else:
         transform = linalg.lstsq(source_matrix, template_matrix)[0]
@@ -490,6 +529,7 @@ def quad(combo, dists):
     .. [L10] Lang, D. et al. "Astrometry.net: Blind astrometric
     calibration of arbitrary astronomical images", AJ, 2010.
     """
+
     max_dist_idx = np.argmax(dists)
     orders = [(0, 1, 2, 3),
               (0, 2, 1, 3),
@@ -559,11 +599,10 @@ if __name__ == '__main__':
             except ValueError:
                 msg = 'ndets must be int or a float between 0 and 1'
                 raise argparse.ArgumentTypeError(msg)
-            if ((value > 1) or (value <= 0)):
+            if (value > 1) or (value <= 0):
                 msg = 'ndets as a float must be between 0 and 1'
                 raise argparse.ArgumentTypeError(msg)
             return value
-        return value
 
     parser = argparse.ArgumentParser(description='Detection-based astronomical'
                                      ' image registration.')
