@@ -59,6 +59,11 @@ class Spalipy:
         The order in `x` and `y` of the spline surfaces used to
         correct the affine transformation. If `0` then no spline
         correction is performed.
+    interp_order : int, optional
+        The spline order to use for interpolation - this is passed
+        directly to `scipy.ndimage.affine_transform` and
+        `scipy.ndimage.interpolation.map_coordinates` as the `order`
+        argument. Must be in the range 0-5.
     output_filename : None or str, optional
         The filename to write the transformed source file to. If None
         the file will not be written, the transformed data can be
@@ -77,8 +82,8 @@ class Spalipy:
     def __init__(self, source_cat, template_cat, source_fits,
                  shape=None, hdu=0, ndets=0.5, nquaddets=20,
                  minquadsep=50, minmatchdist=5, minnmatch=200,
-                 spline_order=3, output_filename=None, overwrite=True,
-                 quiet=False):
+                 spline_order=3, interp_order=3, output_filename=None,
+                 overwrite=True, quiet=False):
 
         if isinstance(source_cat, str):
             source_cat = Table.read(source_cat, format='ascii.sextractor')
@@ -120,6 +125,7 @@ class Spalipy:
         self.minmatchdist = minmatchdist
         self.minnmatch = minnmatch
         self.spline_order = spline_order
+        self.interp_order = interp_order
 
         self.source_cat = self.trim_cat(source_cat)
         self.source_coo = get_det_coords(self.source_cat)
@@ -373,11 +379,13 @@ class Spalipy:
                                  np.arange(self.shape[1]))
             spline_coords_shift = final_transform(np.array([xx, yy]))
             source_data_transform = map_coordinates(source_data,
-                                                    spline_coords_shift)
+                                                    spline_coords_shift,
+                                                    order=self.interp_order)
         else:
             matrix, offset = self.affine_transform.inverse().matrix_form()
             source_data_transform = interpolation.affine_transform(
-                source_data, matrix, offset=offset, output_shape=self.shape).T
+                source_data, matrix, offset=offset, order=self.interp_order,
+                output_shape=self.shape).T
 
         self.source_data_transform = source_data_transform
 
