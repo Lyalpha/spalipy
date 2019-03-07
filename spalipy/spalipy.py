@@ -65,7 +65,8 @@ class Spalipy:
         still accessed through Spalipy.source_data_transformed.
     overwrite : bool, optional
         Whether to overwrite `output_filename` if it exists.
-
+    quiet : bool, optional
+        Do not print extra information about alignment to stdout
 
     Example
     -------
@@ -76,7 +77,8 @@ class Spalipy:
     def __init__(self, source_cat, template_cat, source_fits,
                  shape=None, hdu=0, ndets=0.5, nquaddets=20,
                  minquadsep=50, minmatchdist=5, minnmatch=200,
-                 spline_order=3, output_filename=None, overwrite=True):
+                 spline_order=3, output_filename=None, overwrite=True,
+                 quiet=False):
 
         if isinstance(source_cat, str):
             source_cat = Table.read(source_cat, format='ascii.sextractor')
@@ -138,11 +140,15 @@ class Spalipy:
 
         self.output_filename = output_filename
         self.overwrite = overwrite
+        self.quiet = quiet
 
-    def main(self):
+    def main(self, quiet=None):
         """
         Does everything
         """
+
+        if quiet is None:
+            quiet = self.quiet
 
         self.make_quadlist('source')
         self.make_quadlist('template')
@@ -154,10 +160,24 @@ class Spalipy:
                   .format(self.nmatch, self.minnmatch))
             return
 
+        if not quiet:
+            print("Matched {} detections within {} pixels with affine "
+                  "transformation".format(self.nmatch, self.minmatchdist))
+            dx_med, dx_std, dy_med, dy_std = self.get_residuals("affine")
+            print("Affine alignment pixel residuals [median (stddev)]: "
+                  "x = {:.3f} ({:.3f}), y = {:.3f} ({:.3f})"
+                  .format(dx_med, dx_std, dy_med, dy_std))
+
         if self.spline_order > 0:
             self.find_spline_transform()
 
         self.align()
+
+        if not quiet:
+            dx_med, dx_std, dy_med, dy_std = self.get_residuals("final")
+            print("Final alignment pixel residuals [median (stddev)]: "
+                  "x = {:.3f} ({:.3f}), y = {:.3f} ({:.3f})"
+                  .format(dx_med, dx_std, dy_med, dy_std))
 
     def make_quadlist(self, image, nquaddets=None, minquadsep=None):
         """
@@ -309,8 +329,10 @@ class Spalipy:
                 x0 = y0 = 0
             if xy.ndim == 2:
                 xy = xy.T
-            new_coo = np.array((x0 - self.sbs_x.ev(xy[0], xy[1]),
-                                y0 - self.sbs_y.ev(xy[0], xy[1])))
+            spline_x_offsets = self.sbs_x.ev(xy[0], xy[1])
+            spline_y_offsets = self.sbs_y.ev(xy[0], xy[1])
+            new_coo = np.array((x0 - spline_x_offsets,
+                                y0 - spline_y_offsets))
             if xy.ndim == 2:
                 return new_coo.T
             return new_coo
@@ -339,9 +361,13 @@ class Spalipy:
         source_data = self.source_fits[hdu].data.T
 
         if self.spline_transform is not None:
-            def final_transform(xy):
-                return (self.affine_transform.inverse().apply_transform(xy)
-                        + (self.spline_transform(xy, relative=True)))
+            def final_transform(xy, inverse=True):
+                if inverse:
+                    return (self.affine_transform.inverse().apply_transform(xy)
+                            + (self.spline_transform(xy, relative=True)))
+                else:
+                    return (self.affine_transform.apply_transform(xy)
+                            - (self.spline_transform(xy, relative=True)))
             self.final_transform = final_transform
             xx, yy = np.meshgrid(np.arange(self.shape[0]),
                                  np.arange(self.shape[1]))
@@ -359,6 +385,31 @@ class Spalipy:
             self.source_fits[hdu].data = source_data_transform
             self.source_fits.writeto(output_filename,
                                      overwrite=overwrite)
+
+    def get_residuals(self, transform):
+        """
+        Returns the median and standard deviation of the offsets, after
+        transformation, between the source and template coordinates
+
+        transform : str
+            Should be "affine" or "final". Determines which transform to use to
+            determine residuals for (final = affine + spline correction)
+        """
+
+        template_coo = get_det_coords(self.template_matchdets)
+        source_coo = get_det_coords(self.source_matchdets)
+        if transform == 'affine':
+            source_coo_trans = self.affine_transform.apply_transform(source_coo)
+        elif transform == 'final':
+            source_coo_trans = self.final_transform(source_coo, inverse=False)
+        else:
+            print('transform must be one of "affine" or "final"')
+            return
+
+        dx = template_coo[:, 0] - source_coo_trans[:, 0]
+        dy = template_coo[:, 1] - source_coo_trans[:, 1]
+
+        return np.median(dx), np.std(dx), np.median(dy), np.std(dy)
 
     def match_dets(self, transform, minmatchdist=None):
         """
