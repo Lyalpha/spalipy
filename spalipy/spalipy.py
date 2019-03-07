@@ -27,7 +27,7 @@ class Spalipy:
     source_cat, template_cat : str or :class:`astropy.table.Table`
         The detection catalogue for the images. If `str` they should
         be the filenames of the SExtractor catalogues.
-    source_fits : :class:`astropy.io.fits` or str
+    source_fits : :class:`astropy.io.fits.hdu.hdulist.HDUList` or str
         The source image to be transformed.
     shape : None, str or :class:`astropy.io.fits.hdu.hdulist.HDUList`,
         optional
