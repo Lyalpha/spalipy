@@ -13,6 +13,11 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/Lyalpha/spalipy",
     packages=setuptools.find_packages(),
+    install_requires=[
+        "numpy>=1.10",
+        "astropy>=1.0.0",
+        "scipy>=1.1.0",
+    ],
     classifiers=(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
