@@ -185,7 +185,7 @@ class Spalipy:
 
         self.align()
 
-        if not quiet:
+        if not quiet and self.final_transform is not None:
             dx_med, dx_std, dy_med, dy_std = self.get_residuals("final")
             print("Final alignment pixel residuals [median (stddev)]: "
                   "x = {:.3f} ({:.3f}), y = {:.3f} ({:.3f})"
@@ -387,7 +387,6 @@ class Spalipy:
             return
 
         source_data = self.source_fits[hdu].data.T
-
         if self.spline_transform is not None:
             def final_transform(xy, inverse=True):
                 if inverse:
