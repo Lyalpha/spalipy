@@ -686,44 +686,85 @@ if __name__ == '__main__':
                 raise argparse.ArgumentTypeError(msg)
             return value
 
-    parser = argparse.ArgumentParser(description='Detection-based astronomical'
-                                     ' image registration.')
-    parser.add_argument('source_cat', type=str, help='Filename of the source'
-                        ' detection catalogue produced by SExtractor.')
-    parser.add_argument('template_cat', type=str, help='Filename of the '
-                        'template detection catalogue produced by SExtractor')
-    parser.add_argument('source_fits', type=str, help='Filename of the source'
-                        ' fits image to transform.')
-    parser.add_argument('output_filename', type=str, help='Filename to write'
-                        'the transformed source_fits to.')
-    parser.add_argument('--shape', type=shape_type, default=None, help='Shape '
-                        'of the output transformed image - either filename of '
-                        'fits file to determine shape from or a "x,y" string.')
-    parser.add_argument('--hdu', type=int, default=0, help='the hdu in '
-                        'source_fits to transform the data of. Also the hdu '
-                        'used to derive shape if shape is a fits filename.')
-    parser.add_argument('--ndets', type=ndets_type, default=0.5, help='Number '
-                        'of detections to use when creating quads and '
-                        ' detection matching. If  0 < ndets < 1 then will '
-                        'use this fraction of the shortest of source_cat and '
-                        'template_cat as ndets.')
-    parser.add_argument('--nquaddets', type=int, default=15, help='Number of '
-                        'detections to make quads from.')
-    parser.add_argument('--minquadsep', type=float, default=50, help='Minimum '
-                        'disance in pixels between detections in a quad for it'
-                        ' to be valid.')
-    parser.add_argument('--minmatchdist', type=float, default=5, help='Minimum'
-                        ' matching distance between coordinates after the '
-                        'initial transformation to be considered a match.')
-    parser.add_argument('--minnmatch', type=int, default=200, help='Minimum '
-                        'number of matched dets for the initial '
-                        'transformation to be considered sucessful.')
-    parser.add_argument('--spline-order', type=int, default=3,
-                        dest='spline_order', help='The order in `x` and `y` of'
-                        'the spline surfaces used ' 'to correct the affine '
-                        'transformation.')
-    parser.add_argument('--overwrite', action='store_true', help='Whether to '
-                        'overwrite output_filename if it exists')
+    parser = argparse.ArgumentParser(
+        description='Detection-based astronomical image registration.',
+    )
+    parser.add_argument(
+        'source_cat',
+        type=str,
+        help='Filename of the source detection catalogue produced by SExtractor.',
+    )
+    parser.add_argument(
+        'template_cat',
+        type=str,
+        help='Filename of the template detection catalogue produced by SExtractor',
+    )
+    parser.add_argument(
+        'source_fits',
+        type=str,
+        help='Filename of the source fits image to transform.',
+    )
+    parser.add_argument(
+        'output_filename',
+        type=str, help='Filename to write the transformed source_fits to.',
+    )
+    parser.add_argument(
+        '--shape',
+        type=shape_type,
+        default=None,
+        help='Shape of the output transformed image - either filename of '
+             'fits file to determine shape from or a "x,y" string.',
+    )
+    parser.add_argument(
+        '--hdu',
+        type=int,
+        default=0,
+        help='the hdu in source_fits to transform the data of. Also the hdu used to derive shape if shape '
+             'is a fits filename.',
+    )
+    parser.add_argument(
+        '--ndets',
+        type=ndets_type,
+        default=0.5,
+        help='Number of detections to use when creating quads and detection matching. If  0 < ndets < 1 then will use '
+             'this fraction of the shortest of source_cat and template_cat as ndets.',
+    )
+    parser.add_argument(
+        '--nquaddets',
+        type=int,
+        default=15,
+        help='Number of detections to make quads from.',
+    )
+    parser.add_argument(
+        '--minquadsep',
+        type=float,
+        default=50,
+        help='Minimum disance in pixels between detections in a quad for it to be valid.',
+    )
+    parser.add_argument(
+        '--minmatchdist',
+        type=float,
+        default=5,
+        help='Minimum matching distance between coordinates after the initial transformation to be considered a match.',
+    )
+    parser.add_argument(
+        '--minnmatch',
+        type=int,
+        default=200,
+        help='Minimum number of matched dets for the initial transformation to be considered sucessful.',
+    )
+    parser.add_argument(
+        '--spline-order',
+        type=int,
+        default=3,
+        dest='spline_order',
+        help='The order in `x` and `y` of the spline surfaces used ' 'to correct the affine transformation.',
+    )
+    parser.add_argument(
+        '--overwrite',
+        action='store_true',
+        help='Whether to overwrite output_filename if it exists',
+    )
 
     args_dict = vars(parser.parse_args())
 
