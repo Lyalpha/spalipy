@@ -413,8 +413,8 @@ class Spalipy:
 
         if output_filename is not None:
             self.source_fits[hdu].data = source_data_transform
-            self.source_fits.writeto(output_filename,
-                                     overwrite=overwrite)
+            self.source_fits[hdu].writeto(output_filename,
+                                          overwrite=overwrite)
 
     def get_residuals(self, transform):
         """
