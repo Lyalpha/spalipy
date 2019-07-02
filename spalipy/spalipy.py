@@ -214,6 +214,9 @@ class Spalipy:
 
         if nquaddets is None:
             nquaddets = self.nquaddets
+        if nquaddets > len(coo):
+            print('restricting nquaddets to {}'.format(len(coo)))
+            nquaddets = len(coo)
 
         if minquadsep is None:
             minquadsep = self.minquadsep
@@ -221,7 +224,12 @@ class Spalipy:
         quadlist = []
         quad_idxs = itertools.combinations(range(nquaddets), 4)
         for quad_idx in quad_idxs:
-            combo = coo[quad_idx, :]
+            try:
+                combo = coo[quad_idx, :]
+            except IndexError:
+                print(coo)
+                print(quad_idx)
+                raise
             dists = distance.pdist(combo)
             if np.min(dists) > minquadsep:
                 quadlist.append(quad(combo, dists))
