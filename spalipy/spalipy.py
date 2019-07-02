@@ -486,7 +486,8 @@ class Spalipy:
         tree = cKDTree(get_det_coords(cat))
         close_pairs = tree.query_pairs(minsep)
         to_remove = [det for pair in close_pairs for det in pair]
-        cat.remove_rows(np.unique(to_remove))
+        if to_remove:
+            cat.remove_rows(np.unique(to_remove))
         cat = cat[:self.ndets]
 
         return cat
