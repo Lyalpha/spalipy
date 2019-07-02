@@ -8,6 +8,12 @@ from scipy import linalg, interpolate
 from scipy.ndimage import interpolation, map_coordinates
 from scipy.spatial import cKDTree, distance
 
+# hack to expose dfitpack errors so we can catch them later
+try:
+    interpolate.dfitpack.sproot(-1, -1, -1)
+except Exception as e:
+    dfitpackError = type(e)
+
 # SExtractor column definitions
 X = 'X_IMAGE'
 Y = 'Y_IMAGE'
@@ -322,16 +328,24 @@ class Spalipy:
         # Create splines describing the residual offsets in x and y left over
         # after the affine transformation
         kx = ky = spline_order
-        self.sbs_x = interpolate.SmoothBivariateSpline(template_coo[:, 0],
-                                                       template_coo[:, 1],
-                                                       (template_coo[:, 0]
-                                                        - source_coo[:, 0]),
-                                                       kx=kx, ky=ky)
-        self.sbs_y = interpolate.SmoothBivariateSpline(template_coo[:, 0],
-                                                       template_coo[:, 1],
-                                                       (template_coo[:, 1]
-                                                        - source_coo[:, 1]),
-                                                       kx=kx, ky=ky)
+        try:
+            self.sbs_x = interpolate.SmoothBivariateSpline(
+                template_coo[:, 0],
+                template_coo[:, 1],
+                (template_coo[:, 0] - source_coo[:, 0]),
+                kx=kx,
+                ky=ky,
+            )
+            self.sbs_y = interpolate.SmoothBivariateSpline(
+                template_coo[:, 0],
+                template_coo[:, 1],
+                (template_coo[:, 1] - source_coo[:, 1]),
+                kx=kx,
+                ky=ky,
+            )
+        except dfitpackError:
+            print('scipy.interpolate.SmoothBivariateSpline failed, probably due to no enough sources')
+            raise
 
         # Make a callable to map our coordinates using these splines
         def spline_transform(xy, relative=False):
