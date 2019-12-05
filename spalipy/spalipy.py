@@ -55,14 +55,14 @@ class Spalipy:
     minquadsep : float, optional
         Minimum distance in pixels between detections in a quad for it
         to be valid.
-    minmatchdist : float, optional
-        Minimum matching distance between coordinates after the
+    maxmatchdist : float, optional
+        Maximum matching distance between coordinates after the
         initial transformation to be considered a match.
     minnmatch : int, optional
         Minimum number of matched dets for the initial transformation
         to be considered sucessful.
     spline_order : int, optional
-        The order in `x` and `y` of the spline surfaces used to
+        The order in `x` and `y` of the final spline surfaces used to
         correct the affine transformation. If `0` then no spline
         correction is performed.
     interp_order : int, optional
@@ -87,7 +87,7 @@ class Spalipy:
 
     def __init__(self, source_cat, template_cat, source_fits,
                  shape=None, hdu=0, ndets=0.5, nquaddets=20,
-                 minquadsep=50, minmatchdist=5, minnmatch=200,
+                 minquadsep=50, maxmatchdist=5, minnmatch=200,
                  spline_order=3, interp_order=3, output_filename=None,
                  overwrite=True, quiet=False):
 
@@ -128,7 +128,7 @@ class Spalipy:
 
         self.nquaddets = nquaddets
         self.minquadsep = minquadsep
-        self.minmatchdist = minmatchdist
+        self.maxmatchdist = maxmatchdist
         self.minnmatch = minnmatch
         self.spline_order = spline_order
         self.interp_order = interp_order
@@ -166,15 +166,13 @@ class Spalipy:
         self.make_quadlist('template')
 
         self.find_affine_transform()
-
         if self.affine_transform is None:
-            print('{} matched dets is less than minimum required ({})'
-                  .format(self.nmatch, self.minnmatch))
+            print('No initial affine transform found')
             return
 
         if not quiet:
-            print("Matched {} detections within {} pixels with affine "
-                  "transformation".format(self.nmatch, self.minmatchdist))
+            print("Matched {} detections within {} pixels with initial affine "
+                  "transformation".format(self.nmatch, self.maxmatchdist))
             dx_med, dx_std, dy_med, dy_std = self.get_residuals("affine")
             print("Affine alignment pixel residuals [median (stddev)]: "
                   "x = {:.3f} ({:.3f}), y = {:.3f} ({:.3f})"
@@ -245,7 +243,7 @@ class Spalipy:
         elif image == 'template':
             self.template_quadlist = quadlist
 
-    def find_affine_transform(self, minmatchdist=None, minnmatch=None,
+    def find_affine_transform(self, maxmatchdist=None, minnmatch=None,
                               maxcands=10, minquaddist=0.005):
         """
         Use the quadlist hashes to determine an initial guess at an affine
@@ -254,8 +252,8 @@ class Spalipy:
 
         Parameters
         ----------
-        minmatchdist : None or float, optional
-            Minimum matching distance between coordinates after the
+        maxmatchdist : None or float, optional
+            Maximum matching distance between coordinates after the
             initial transformation to be considered a match. If `None`,
             inherits from the class instance attribute.
         minnmatch : None or int, optional
@@ -269,8 +267,8 @@ class Spalipy:
             Not really sure what this is, just copied from alipy.
         """
 
-        if minmatchdist is None:
-            minmatchdist = self.minmatchdist
+        if maxmatchdist is None:
+            maxmatchdist = self.maxmatchdist
         if minnmatch is None:
             minnmatch = self.minnmatch
 
@@ -281,20 +279,25 @@ class Spalipy:
         minddist_idx = np.argmin(dists, axis=0)
         mindist = np.min(dists, axis=0)
         best = np.argsort(mindist)
+        if not np.any(mindist < minquaddist):
+            print('No matching quads found below minimum quad distance of {}'
+                  .format(minquaddist))
+            return
 
+        nmatch = 0
         # Use best initial guess at transformation to get list of matched dets
         for i in range(min(maxcands, len(best))):
             bi = best[i]
-            template_quad = self.template_quadlist[minddist_idx[bi]]
-            source_quad = self.source_quadlist[bi]
-            # Get a quick (exact) transformation guess
-            # using first two detections
-            transform = calc_affine_transform(source_quad[0][:2],
-                                              template_quad[0][:2])
             dist = mindist[bi]
             if dist < minquaddist:
+                # Get a quick (exact) transformation guess
+                # using first two detections
+                template_quad = self.template_quadlist[minddist_idx[bi]]
+                source_quad = self.source_quadlist[bi]
+                transform = calc_affine_transform(source_quad[0][:2],
+                                                  template_quad[0][:2])
                 nmatch, source_matchdets, template_matchdets = \
-                    self.match_dets(transform, minmatchdist=minmatchdist)
+                    self.match_dets(transform, maxmatchdist=maxmatchdist)
                 if nmatch > minnmatch:
                     # Refine the transformation using the matched detections
                     source_match_coo = get_det_coords(source_matchdets)
@@ -303,8 +306,12 @@ class Spalipy:
                                                       template_match_coo)
                     # Store the final matched detection tables and transform
                     self.nmatch, self.source_matchdets, self.template_matchdets = \
-                        self.match_dets(transform, minmatchdist=minmatchdist)
+                        self.match_dets(transform, maxmatchdist=maxmatchdist)
                     self.affine_transform = transform
+                    break
+        else:
+            print('{} matched dets after initial affine transform less than '
+                  'minimum required ({})'.format(nmatch, minnmatch))
 
     def find_spline_transform(self, spline_order=None):
         """
@@ -440,7 +447,7 @@ class Spalipy:
 
         return np.median(dx), np.std(dx), np.median(dy), np.std(dy)
 
-    def match_dets(self, transform, minmatchdist=None):
+    def match_dets(self, transform, maxmatchdist=None):
         """
         Match the source and template detections using `transform`
 
@@ -448,14 +455,14 @@ class Spalipy:
         ----------
         transform : :class:`spalipy.AffineTransform`
             The transformation to use.
-        minmatchdist : None or float, optional
-            Minimum matching distance between coordinates after the
+        maxmatchdist : None or float, optional
+            Maximum matching distance between coordinates after the
             initial transformation to be considered a match. If `None`,
             inherits from the class instance attribute.
         """
 
-        if minmatchdist is None:
-            minmatchdist = self.minmatchdist
+        if maxmatchdist is None:
+            maxmatchdist = self.maxmatchdist
 
         source_coo_trans = transform.apply_transform(self.source_coo)
 
@@ -465,10 +472,10 @@ class Spalipy:
                            dists_argsort]
         # For a match, we require the distance to be within our limit, and
         # that the second nearest object is double that distance. This is a
-        # crude method to alleviate double matches, maybe caused by agressive
+        # crude method to alleviate double matches, maybe caused by aggressive
         # segmentation in the source catalogues.
-        passed = ((dists_sort[:, 0] <= minmatchdist)
-                  & (dists_sort[:, 1] >= 2. * minmatchdist))
+        passed = ((dists_sort[:, 0] <= maxmatchdist)
+                  & (dists_sort[:, 1] >= 2. * maxmatchdist))
 
         nmatched = np.sum(passed)
         source_matchdets = self.source_cat[passed]
@@ -493,11 +500,11 @@ class Spalipy:
         minsep : float, optional
             The minimum separation between coordinates in the catalogue.
             If left as default ``None``, this is set to
-            ``2 * self.minmatchdist``.
+            ``2 * self.maxmatchdist``.
         """
 
         if minsep is None:
-            minsep = 2 * self.minmatchdist
+            minsep = 2 * self.maxmatchdist
 
         cat = cat[COLUMNS]
         cat = cat[(cat[FWHM] >= minfwhm)
@@ -530,9 +537,7 @@ class AffineTransform:
         self.v = np.asarray(v)
 
     def inverse(self):
-        """
-        Returns the inverse transform
-        """
+        """Returns the inverse transform"""
 
         # To represent affine transformations with matrices,
         # we can use homogeneous coordinates.
@@ -555,9 +560,7 @@ class AffineTransform:
                           [self.v[1], self.v[0]]]), self.v[2:4])
 
     def apply_transform(self, xy):
-        """
-        Applies the transform to an array of x, y points
-        """
+        """Applies the transform to an array of x, y points"""
 
         xy = np.asarray(xy)
         # Can consistently refer to x and y as xy[0] and xy[1] if xy is
@@ -572,9 +575,7 @@ class AffineTransform:
 
 
 def calc_affine_transform(source_coo, template_coo):
-    """
-    Calculates the affine transformation
-    """
+    """Calculates the affine transformation"""
 
     n = len(source_coo)
     template_matrix = template_coo.ravel()
@@ -741,7 +742,7 @@ if __name__ == '__main__':
         help='Minimum disance in pixels between detections in a quad for it to be valid.',
     )
     parser.add_argument(
-        '--minmatchdist',
+        '--maxmatchdist',
         type=float,
         default=5,
         help='Minimum matching distance between coordinates after the initial transformation to be considered a match.',
