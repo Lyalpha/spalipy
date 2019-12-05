@@ -435,15 +435,15 @@ class Spalipy:
         template_coo = get_det_coords(self.template_matchdets)
         source_coo = get_det_coords(self.source_matchdets)
         if transform == 'affine':
-            source_coo_trans = self.affine_transform.apply_transform(source_coo)
+            template_coo_trans = self.affine_transform.inverse().apply_transform(template_coo)
         elif transform == 'final':
-            source_coo_trans = self.final_transform(source_coo, inverse=False)
+            template_coo_trans = self.final_transform(template_coo)
         else:
             print('transform must be one of "affine" or "final"')
             return
 
-        dx = template_coo[:, 0] - source_coo_trans[:, 0]
-        dy = template_coo[:, 1] - source_coo_trans[:, 1]
+        dx = template_coo_trans[:, 0] - source_coo[:, 0]
+        dy = template_coo_trans[:, 1] - source_coo[:, 1]
 
         return np.median(dx), np.std(dx), np.median(dy), np.std(dy)
 
