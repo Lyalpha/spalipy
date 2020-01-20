@@ -12,7 +12,7 @@ distorted or wide field-of-view images.
 ## requirements
 
 ```
-astropy > 1.0.0
+astropy >= 3.1.0
 numpy >= 1.10.0
 scipy >= 1.1.0
 ```

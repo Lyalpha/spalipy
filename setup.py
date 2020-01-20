@@ -15,7 +15,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[
         "numpy>=1.10",
-        "astropy>=1.0.0",
+        "astropy>=3.1.0",
         "scipy>=1.1.0",
     ],
     classifiers=(
