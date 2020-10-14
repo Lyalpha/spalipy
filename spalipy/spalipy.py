@@ -228,12 +228,7 @@ class Spalipy:
         quadlist = []
         quad_idxs = itertools.combinations(range(nquaddets), 4)
         for quad_idx in quad_idxs:
-            try:
-                combo = coo[quad_idx, :]
-            except IndexError:
-                print(coo)
-                print(quad_idx)
-                raise
+            combo = coo[quad_idx, :]
             dists = distance.pdist(combo)
             if np.min(dists) > minquadsep:
                 quadlist.append(quad(combo, dists))
