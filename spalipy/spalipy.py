@@ -1,5 +1,6 @@
 import argparse
 import itertools
+import logging
 
 from astropy.io import fits
 from astropy.table import Table
@@ -76,8 +77,6 @@ class Spalipy:
         still accessed through Spalipy.source_data_transformed.
     overwrite : bool, optional
         Whether to overwrite `output_filename` if it exists.
-    quiet : bool, optional
-        Do not print extra information about alignment to stdout
 
     Example
     -------
@@ -89,7 +88,7 @@ class Spalipy:
                  shape=None, hdu=0, ndets=0.5, nquaddets=20,
                  minquadsep=50, maxmatchdist=5, minnmatch=200,
                  spline_order=3, interp_order=3, output_filename=None,
-                 overwrite=True, quiet=False):
+                 overwrite=True):
 
         if isinstance(source_cat, str):
             source_cat = Table.read(source_cat, format='ascii.sextractor')
@@ -152,42 +151,37 @@ class Spalipy:
 
         self.output_filename = output_filename
         self.overwrite = overwrite
-        self.quiet = quiet
 
-    def main(self, quiet=None):
+    def main(self):
         """
         Does everything
         """
-
-        if quiet is None:
-            quiet = self.quiet
 
         self.make_quadlist('source')
         self.make_quadlist('template')
 
         self.find_affine_transform()
         if self.affine_transform is None:
-            print('No initial affine transform found')
+            logging.error('No initial affine transform found')
             return
 
-        if not quiet:
-            print("Matched {} detections within {} pixels with initial affine "
-                  "transformation".format(self.nmatch, self.maxmatchdist))
-            dx_med, dx_std, dy_med, dy_std = self.get_residuals("affine")
-            print("Affine alignment pixel residuals [median (stddev)]: "
-                  "x = {:.3f} ({:.3f}), y = {:.3f} ({:.3f})"
-                  .format(dx_med, dx_std, dy_med, dy_std))
+        logging.info("Matched {} detections within {} pixels with initial affine "
+                     "transformation".format(self.nmatch, self.maxmatchdist))
+        dx_med, dx_std, dy_med, dy_std = self.get_residuals("affine")
+        logging.info("Affine alignment pixel residuals [median (stddev)]: "
+                     "x = {:.3f} ({:.3f}), y = {:.3f} ({:.3f})"
+                     .format(dx_med, dx_std, dy_med, dy_std))
 
         if self.spline_order > 0:
             self.find_spline_transform()
 
         self.align()
 
-        if not quiet and self.final_transform is not None:
+        if self.final_transform is not None:
             dx_med, dx_std, dy_med, dy_std = self.get_residuals("final")
-            print("Final alignment pixel residuals [median (stddev)]: "
-                  "x = {:.3f} ({:.3f}), y = {:.3f} ({:.3f})"
-                  .format(dx_med, dx_std, dy_med, dy_std))
+            logging.info("Final alignment pixel residuals [median (stddev)]: "
+                         "x = {:.3f} ({:.3f}), y = {:.3f} ({:.3f})"
+                         .format(dx_med, dx_std, dy_med, dy_std))
 
     def make_quadlist(self, image, nquaddets=None, minquadsep=None):
         """
@@ -219,7 +213,7 @@ class Spalipy:
         if nquaddets is None:
             nquaddets = self.nquaddets
         if nquaddets > len(coo):
-            print('restricting nquaddets to {}'.format(len(coo)))
+            logging.info('restricting nquaddets to {}'.format(len(coo)))
             nquaddets = len(coo)
 
         if minquadsep is None:
@@ -275,8 +269,8 @@ class Spalipy:
         mindist = np.min(dists, axis=0)
         best = np.argsort(mindist)
         if not np.any(mindist < minquaddist):
-            print('No matching quads found below minimum quad distance of {}'
-                  .format(minquaddist))
+            logging.error('No matching quads found below minimum quad distance of {}'
+                          .format(minquaddist))
             return
 
         nmatch = 0
@@ -305,8 +299,8 @@ class Spalipy:
                     self.affine_transform = transform
                     break
         else:
-            print('{} matched dets after initial affine transform less than '
-                  'minimum required ({})'.format(nmatch, minnmatch))
+            logging.error('{} matched dets after initial affine transform less than '
+                          'minimum required ({})'.format(nmatch, minnmatch))
 
     def find_spline_transform(self, spline_order=None):
         """
@@ -346,7 +340,7 @@ class Spalipy:
                 ky=ky,
             )
         except dfitpackError:
-            print('scipy.interpolate.SmoothBivariateSpline failed, probably due to no enough sources')
+            logging.error('scipy.interpolate.SmoothBivariateSpline failed, probably due to not enough sources')
             raise
 
         # Make a callable to map our coordinates using these splines
@@ -385,7 +379,7 @@ class Spalipy:
             overwrite = self.overwrite
 
         if self.affine_transform is None:
-            print("affine_transform is not defined")
+            logging.error("affine_transform is not defined")
             return
 
         source_data = self.source_fits[hdu].data.T
@@ -434,7 +428,7 @@ class Spalipy:
         elif transform == 'final':
             template_coo_trans = self.final_transform(template_coo)
         else:
-            print('transform must be one of "affine" or "final"')
+            logging.error('transform must be one of "affine" or "final"')
             return
 
         dx = template_coo_trans[:, 0] - source_coo[:, 0]
