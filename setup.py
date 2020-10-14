@@ -18,6 +18,7 @@ setuptools.setup(
         "numpy>=1.10",
         "astropy>=3.1.0",
         "scipy>=1.1.0",
+        "sep~=1.0.3"
     ],
     classifiers=(
         "Programming Language :: Python :: 3",
