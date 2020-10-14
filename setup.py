@@ -12,6 +12,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Lyalpha/spalipy",
+    download_url="https://github.com/Lyalpha/pympc/archive/v1.0.tar.gz",
     packages=setuptools.find_packages(),
     install_requires=[
         "numpy>=1.10",
