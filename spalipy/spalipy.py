@@ -10,7 +10,7 @@ from scipy import linalg, interpolate
 from scipy.ndimage import interpolation, map_coordinates
 from scipy.spatial import cKDTree, distance
 
-# hack to expose dfitpack errors so we can catch them later
+# expose dfitpack errors so we can catch them later
 try:
     interpolate.dfitpack.sproot(-1, -1, -1)
 except Exception as e:
