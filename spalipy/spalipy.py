@@ -2,9 +2,10 @@ import argparse
 import itertools
 import logging
 
+import numpy as np
+import sep
 from astropy.io import fits
 from astropy.table import Table
-import numpy as np
 from scipy import linalg, interpolate
 from scipy.ndimage import interpolation, map_coordinates
 from scipy.spatial import cKDTree, distance
@@ -15,15 +16,6 @@ try:
 except Exception as e:
     dfitpackError = type(e)
 
-# SExtractor column definitions
-X = 'X_IMAGE'
-Y = 'Y_IMAGE'
-FLUX = 'FLUX_BEST'
-FWHM = 'FWHM_IMAGE'
-FLAGS = 'FLAGS'
-
-COLUMNS = [X, Y, FLUX, FWHM, FLAGS]
-
 
 class Spalipy:
     """
@@ -31,14 +23,17 @@ class Spalipy:
 
     Parameters
     ----------
-    source_cat, template_cat : str or :class:`astropy.table.Table`
-        The detection catalogue for the images. If `str` they should
-        be the filenames of the SExtractor catalogues.
     source_fits : :class:`astropy.io.fits.hdu.hdulist.HDUList` or str
         The source image to be transformed.
+    template_fits : :class:`astropy.io.fits.hdu.hdulist.HDUList` or str, optional
+        The template image to which the source image will be transformed.
+    source_cat, template_cat : None or :class:`astropy.table.Table` or str, optional
+        The detection catalogue for the relevant image. If `None` a basic `sep.extract()`
+        run will be performed (in this case `template_fits` must be given). If `str`
+        they should be the filenames of SExtractor ascii files.
     shape : None, str or :class:`astropy.io.fits.hdu.hdulist.HDUList`,
         optional
-        The shape of the output image. If None, output shape is the
+        The shape of the output image. If `None`, output shape is the
         same as `source_fits`. Otherwise pass a fits filename or
         class:`astropy.io.fits` instance and will take the shape from
         data in `hdu` in that fits file.
@@ -49,8 +44,8 @@ class Spalipy:
     ndets : int or float, optional
         The number of detections to use in the initial quad
         determination and detection matching. If 0 < `ndets` < 1 then
-        will use this fraction of the shortest of `source_cat` and
-        `template_cat` as `ndets`.
+        will use this fraction of the shortest number of detections in
+        the source or template as `ndets`.
     nquaddets : int, optional
         The number of detections to make quads from.
     minquadsep : float, optional
@@ -78,29 +73,73 @@ class Spalipy:
     overwrite : bool, optional
         Whether to overwrite `output_filename` if it exists.
 
-    Example
+    Examples
     -------
-    s = spalipy.Spalipy("source.cat", "template.cat", "source.fits")
-    s.main()
-    """
 
-    def __init__(self, source_cat, template_cat, source_fits,
+    s = spalipy.Spalipy("source.fits", source_cat="source.cat", template_cat="template.cat")
+    s.main()
+
+    s = spalipy.Spalipy("source.fits", source_cat="source.cat", template_cat="template.cat")
+    """
+    x_col = 'x'
+    y_col = 'y'
+    flux_col = 'flux'
+    fwhm_col = 'fwhm'
+    flag_col = 'flag'
+    columns = [x_col, y_col, flux_col, fwhm_col, flag_col]
+    # SExtractor column mappings
+    sex_column_mapping = {x_col: 'X_IMAGE',
+                          y_col: 'Y_IMAGE',
+                          flux_col: 'FLUX_BEST',
+                          fwhm_col: 'FWHM_IMAGE',
+                          flag_col: 'FLAGS'
+                          }
+
+    def __init__(self, source_fits, template_fits=None, source_cat=None, template_cat=None,
                  shape=None, hdu=0, ndets=0.5, nquaddets=20,
                  minquadsep=50, maxmatchdist=5, minnmatch=200,
                  spline_order=3, interp_order=3, output_filename=None,
                  overwrite=True):
 
-        if isinstance(source_cat, str):
-            source_cat = Table.read(source_cat, format='ascii.sextractor')
-        self.source_cat_full = source_cat.copy()
-
-        if isinstance(template_cat, str):
-            template_cat = Table.read(template_cat, format='ascii.sextractor')
-        self.template_cat_full = template_cat.copy()
+        self.hdu = hdu
+        self.nquaddets = nquaddets
+        self.minquadsep = minquadsep
+        self.maxmatchdist = maxmatchdist
+        self.minnmatch = minnmatch
+        self.spline_order = spline_order
+        self.interp_order = interp_order
 
         if isinstance(source_fits, str):
             source_fits = fits.open(source_fits)
+        elif not isinstance(source_fits, fits.hdu.hdulist.HDUList):
+            raise ValueError(f"Source fits argument type ({type(source_fits)} not recognised.")
         self.source_fits = source_fits.copy()
+
+        if template_fits is None:
+            if template_cat is None:
+                raise ValueError("One of `template_fits` or `template_cat` must be given")
+        elif isinstance(template_fits, str):
+            template_fits = fits.open(template_fits)
+        elif not isinstance(template_fits, fits.hdu.hdulist.HDUList):
+            raise ValueError(f"Template fits argument type ({type(template_fits)} not recognised.")
+
+        if source_cat is None:
+            logging.info("Extracting from source")
+            source_cat = self.extract_sources(source_fits)
+        elif isinstance(source_cat, str):
+            source_cat = self.read_sextractor_cat(source_cat)
+        elif not isinstance(source_cat, Table):
+            raise ValueError(f"Source catalogue argument type ({type(source_cat)}) not recognised.")
+        self.source_cat_full = source_cat.copy()
+
+        if template_cat is None:
+            logging.info("Extracting from template")
+            template_cat = self.extract_sources(template_fits)
+        if isinstance(template_cat, str):
+            template_cat = self.read_sextractor_cat(template_cat)
+        elif not isinstance(template_cat, Table):
+            raise ValueError(f"Template catalogue argument type ({type(template_cat)}) not recognised.")
+        self.template_cat_full = template_cat.copy()
 
         hdr = None
         if isinstance(shape, str):
@@ -113,8 +152,6 @@ class Spalipy:
             shape = (int(hdr['NAXIS1']), int(hdr['NAXIS2']))
         self.shape = shape
 
-        self.hdu = hdu
-
         if isinstance(ndets, float):
             ntot = min(len(source_cat), len(template_cat))
             ndets = int(ndets * ntot)
@@ -125,17 +162,10 @@ class Spalipy:
                    'transform'.format(ndets, minnmatch))
             raise ValueError(msg)
 
-        self.nquaddets = nquaddets
-        self.minquadsep = minquadsep
-        self.maxmatchdist = maxmatchdist
-        self.minnmatch = minnmatch
-        self.spline_order = spline_order
-        self.interp_order = interp_order
-
         self.source_cat = self.trim_cat(source_cat)
-        self.source_coo = get_det_coords(self.source_cat)
+        self.source_coo = self.get_det_coords(self.source_cat)
         self.template_cat = self.trim_cat(template_cat)
-        self.template_coo = get_det_coords(self.template_cat)
+        self.template_coo = self.get_det_coords(self.template_cat)
         self.source_quadlist = []
         self.template_quadlist = []
 
@@ -151,6 +181,33 @@ class Spalipy:
 
         self.output_filename = output_filename
         self.overwrite = overwrite
+
+    def read_sextractor_cat(self, cat_filename):
+        """Read a sextractor ascii file and write some columns"""
+        cat = Table.read(cat_filename, format='ascii.sextractor')
+        for col, sex_col in self.sex_column_mapping.items():
+            cat.rename_column(sex_col, col)
+        return cat
+
+    def extract_sources(self, hdulist):
+        """Return an astropy Table of detections from a HDUList"""
+
+        data = hdulist[self.hdu].data.byteswap()
+        data = data.newbyteorder()
+        bkg = sep.Background(data)
+        bkg_rms = bkg.rms()
+        data_sub = data - bkg.back()
+
+        extracted_sources = sep.extract(
+            data_sub,
+            thresh=4,
+            err=bkg_rms,
+        )
+        sources = Table(extracted_sources)
+        sources["fwhm"] = 2.0 * (np.log(2) * (sources["a"] ** 2.0 + sources["b"] ** 2.0)) ** 0.5
+        logging.info(f"Extracted {len(sources)} sources")
+
+        return sources
 
     def main(self):
         """
@@ -289,8 +346,8 @@ class Spalipy:
                     self.match_dets(transform, maxmatchdist=maxmatchdist)
                 if nmatch > minnmatch:
                     # Refine the transformation using the matched detections
-                    source_match_coo = get_det_coords(source_matchdets)
-                    template_match_coo = get_det_coords(template_matchdets)
+                    source_match_coo = self.get_det_coords(source_matchdets)
+                    template_match_coo = self.get_det_coords(template_matchdets)
                     transform = calc_affine_transform(source_match_coo,
                                                       template_match_coo)
                     # Store the final matched detection tables and transform
@@ -319,8 +376,8 @@ class Spalipy:
 
         # Get the source, after affine transformation, and template coordinates
         source_coo = self.affine_transform.apply_transform(
-            get_det_coords(self.source_matchdets))
-        template_coo = get_det_coords(self.template_matchdets)
+            self.get_det_coords(self.source_matchdets))
+        template_coo = self.get_det_coords(self.template_matchdets)
         # Create splines describing the residual offsets in x and y left over
         # after the affine transformation
         kx = ky = spline_order
@@ -421,8 +478,8 @@ class Spalipy:
             determine residuals for (final = affine + spline correction)
         """
 
-        template_coo = get_det_coords(self.template_matchdets)
-        source_coo = get_det_coords(self.source_matchdets)
+        template_coo = self.get_det_coords(self.template_matchdets)
+        source_coo = self.get_det_coords(self.source_matchdets)
         if transform == 'affine':
             template_coo_trans = self.affine_transform.inverse().apply_transform(template_coo)
         elif transform == 'final':
@@ -495,12 +552,12 @@ class Spalipy:
         if minsep is None:
             minsep = 2 * self.maxmatchdist
 
-        cat = cat[COLUMNS]
-        cat = cat[(cat[FWHM] >= minfwhm)
-                  & (cat[FLAGS] <= maxflag)]
-        cat.sort(FLUX)
+        cat = cat[self.columns]
+        cat = cat[(cat[self.fwhm_col] >= minfwhm)
+                  & (cat[self.flag_col] <= maxflag)]
+        cat.sort(self.flux_col)
         cat.reverse()
-        tree = cKDTree(get_det_coords(cat))
+        tree = cKDTree(self.get_det_coords(cat))
         close_pairs = tree.query_pairs(minsep)
         to_remove = [det for pair in close_pairs for det in pair]
         if to_remove:
@@ -508,6 +565,10 @@ class Spalipy:
         cat = cat[:self.ndets]
 
         return cat
+
+    def get_det_coords(self, cat):
+        cat_arr = cat[self.x_col, self.y_col].as_array()
+        return cat_arr.view((cat_arr.dtype[0], 2))
 
 
 class AffineTransform:
@@ -582,11 +643,6 @@ def calc_affine_transform(source_coo, template_coo):
         transform = linalg.lstsq(source_matrix, template_matrix)[0]
 
     return AffineTransform(transform)
-
-
-def get_det_coords(cat):
-    cat_arr = cat[X, Y].as_array()
-    return cat_arr.view((cat_arr.dtype[0], 2))
 
 
 def quad(combo, dists):
