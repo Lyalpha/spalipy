@@ -772,7 +772,7 @@ def _console_align(args_dict):
 
     logging.info(f"Reading source data from {args_dict['source_fits']}")
     args_dict["source_data"] = fits.getdata(args_dict["source_fits"], ext=args_dict["source_ext"])
-    if args_dict["source_cat"] is not None:
+    if args_dict.get("source_cat", None) is not None:
         logging.info(f"Reading source detection catalogue from {args_dict['source_cat']}")
         args_dict["source_det"] = _read_sextractor_cat(args_dict["source_cat"])
 
@@ -795,13 +795,13 @@ def _console_align(args_dict):
         )
 
     # Remove any args not used in the call to Spalipy
-    args_dict.pop("source_fits")
-    args_dict.pop("template_fits")
-    args_dict.pop("source_cat")
-    args_dict.pop("template_cat")
-    args_dict.pop("source_ext")
-    args_dict.pop("template_ext")
-    args_dict.pop("verbose")
+    args_dict.pop("source_fits", None)
+    args_dict.pop("template_fits", None)
+    args_dict.pop("source_cat", None)
+    args_dict.pop("template_cat", None)
+    args_dict.pop("source_ext", None)
+    args_dict.pop("template_ext", None)
+    args_dict.pop("verbose", None)
 
     logging.info("Initialising Spalipy instance")
     s = Spalipy(**args_dict)
@@ -846,11 +846,11 @@ def main(args=None):
     )
 
     parser.add_argument(
-        "source-fits", type=str, help="Filename of the source fits image to transform.",
+        "source_fits", type=str, help="Filename of the source fits image to transform.",
     )
 
     parser.add_argument(
-        "output-filename", type=str, help="Filename to write the transformed source image to.",
+        "output_filename", type=str, help="Filename to write the transformed source image to.",
     )
 
     parser.add_argument(
@@ -1043,14 +1043,14 @@ def main_simple(args=None):
     )
 
     parser.add_argument(
-        "source-fits", type=str, help="Filename of the source fits image to transform.",
+        "source_fits", type=str, help="Filename of the source fits image to transform.",
     )
 
     parser.add_argument(
-        "output-filename", type=str, help="Filename to write the transformed source image to.",
+        "output_filename", type=str, help="Filename to write the transformed source image to.",
     )
     parser.add_argument(
-        "template-fits",
+        "template_fits",
         type=str,
         default=None,
         help="Filename of the template fits image to transform to.",

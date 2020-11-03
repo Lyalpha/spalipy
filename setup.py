@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="spalipy",
-    version="2.0.2",
+    version="2.0.3",
     author="Joe Lyman",
     author_email="joedlyman@gmail.com",
     description="Detection-based astrononmical image registration",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Lyalpha/spalipy",
-    download_url="https://github.com/Lyalpha/spalipy/archive/2.0.2.tar.gz",
+    download_url="https://github.com/Lyalpha/spalipy/archive/2.0.3.tar.gz",
     packages=setuptools.find_packages(),
     entry_points={
         "console_scripts": [
