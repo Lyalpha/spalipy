@@ -36,7 +36,7 @@ setuptools.setup(
             "align-fits-simple=spalipy.spalipy:main_simple",
         ]
     },
-    install_requires=["numpy>=1.10", "astropy>=3.2.2", "scipy>=1.1.0", "sep~=1.0.3"][::-1],
+    install_requires=["astropy>=3.2.2", "numpy>=1.10", "scipy>=1.1.0", "sep==1.1.1"][::-1],
     classifiers=[
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",

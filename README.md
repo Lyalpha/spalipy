@@ -11,14 +11,7 @@ or wide field-of-view images.
 
 ## Install
 
-Due to a quirk with the `sep` dependency, one must have `numpy` explicitly 
-installed prior to installation, if it isn't run
-```
-pip install numpy
-```
-before either of the install options below.
-
-#### From `pip`
+#### From PyPI
 ```
 pip install spalipy
 ```
@@ -27,7 +20,7 @@ pip install spalipy
 ```
 git clone https://github.com/Lyalpha/spalipy
 cd spalipy
-python setup.py install
+pip install .
 ```
 
 ## Quick run
