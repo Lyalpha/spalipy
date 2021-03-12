@@ -18,7 +18,7 @@ import argparse
 import itertools
 import logging
 import os
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import sep
@@ -173,12 +173,12 @@ class Spalipy:
         source_det: Optional[Table] = None,
         template_det: Optional[Table] = None,
         output_shape: Optional[tuple] = None,
-        n_det: float = 0.25,
+        n_det: Union[float, int, None] = None,
         n_quad_det: int = 20,
         min_quad_sep: int = 50,
         max_match_dist: int = 5,
         min_n_match: int = 100,
-        sub_tile: int = 2,
+        sub_tile: int = 1,
         max_quad_cand: int = 10,
         patience_quad_cand: int = 2,
         max_quad_hash_dist: float = 0.005,
@@ -190,7 +190,7 @@ class Spalipy:
         min_sep: float = None,
     ):
         if np.ndim(source_data) != 2:
-            raise ValueError(f"source_data must be 2-dimensional array")
+            raise ValueError("source_data must be 2-dimensional array")
         self.source_data = source_data.copy()
         self.source_data_shape = source_data.shape
 
@@ -229,7 +229,7 @@ class Spalipy:
         # Need to calculate n_det here as it is used to prep detection tables
         if isinstance(n_det, float):
             n_det = int(n_det * len(source_det))
-        if n_det < min_n_match:
+        if n_det is not None and n_det < min_n_match:
             raise ValueError(
                 f"n_det ({n_det}) < min_n_match ({min_n_match}) - no solution possible"
             )
@@ -589,7 +589,8 @@ class Spalipy:
             to_remove = [det for pair in close_pairs for det in pair]
             if to_remove:
                 det.remove_rows(np.unique(to_remove))
-        det = det[: self.n_det]
+        if self.n_det is not None:
+            det = det[: self.n_det]
 
         return det
 
