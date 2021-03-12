@@ -176,7 +176,7 @@ class Spalipy:
         n_det: Union[float, int, None] = None,
         n_quad_det: int = 20,
         min_quad_sep: int = 50,
-        max_match_dist: int = 5,
+        max_match_dist: int = 3,
         min_n_match: int = 100,
         sub_tile: int = 1,
         max_quad_cand: int = 10,
