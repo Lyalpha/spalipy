@@ -197,8 +197,8 @@ class Spalipy:
         self.source_mask = source_mask
         if self.source_mask is not None and self.source_mask.shape != self.source_data_shape:
             raise ValueError(
-                f"source_mask shape ({source_mask.shape}) must match "
-                f"source_data shape ({self.source_data_shape})"
+                f"source_mask shape {source_mask.shape} must match "
+                f"source_data shape {self.source_data_shape}"
             )
 
         if output_shape is None:
