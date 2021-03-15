@@ -416,7 +416,7 @@ class Spalipy:
         """
 
         if self.spline_order == 0:
-            logging.info("Skipping spline trandformation fit (spline order is 0)")
+            logging.info("Skipping spline transformation fit (spline order is 0)")
             return
 
         # Get the source, after affine transformation, and template coordinates
@@ -485,10 +485,7 @@ class Spalipy:
         return ft
 
     def transform_data(self):
-        """
-        Perform the alignment and write the transformed source
-        file.
-        """
+        """Perform the alignment and populate the aligned_data atrribute"""
 
         source_data_t = self.source_data.T
 
@@ -950,7 +947,7 @@ def main(args=None):
     parser.add_argument(
         "--max-match-dist",
         type=float,
-        default=5,
+        default=3,
         help="Minimum matching distance between coordinates after the initial transformation to be considered a match.",
     )
     parser.add_argument(
@@ -962,7 +959,7 @@ def main(args=None):
     parser.add_argument(
         "--sub-tile",
         type=int,
-        default=2,
+        default=1,
         help="Split the image into this number of sub-tiles in each axis and "
         "perform quad creation, affine transform fitting, and cross-matching "
         "independently in each sub-tile. This can help in the case of very "
