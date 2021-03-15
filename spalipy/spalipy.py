@@ -169,6 +169,7 @@ class Spalipy:
     def __init__(
         self,
         source_data: np.ndarray,
+        source_mask: np.ndarray = None,
         template_data: np.ndarray = None,
         source_det: Optional[Table] = None,
         template_det: Optional[Table] = None,
@@ -193,6 +194,12 @@ class Spalipy:
             raise ValueError("source_data must be 2-dimensional array")
         self.source_data = source_data.copy()
         self.source_data_shape = source_data.shape
+        self.source_mask = source_mask
+        if self.source_mask is not None and self.source_mask.shape != self.source_data_shape:
+            raise ValueError(
+                f"source_mask shape ({source_mask.shape}) must match "
+                f"source_data shape ({self.source_data_shape})"
+            )
 
         if output_shape is None:
             # Because of the way the interpolation routines output data, we use
@@ -270,6 +277,7 @@ class Spalipy:
         self.sbs_y = None
 
         self.aligned_data = None
+        self.aligned_mask = None
 
     def align(self):
         """Performs the full alignment routine and sets resulting aligned_data attribute"""
@@ -496,6 +504,10 @@ class Spalipy:
             aligned_data = map_coordinates(
                 source_data_t, full_transform_coords_shift, order=self.interp_order
             )
+            if self.source_mask is not None:
+                aligned_mask = map_coordinates(
+                    self.source_mask.T, full_transform_coords_shift, order=0
+                )
         else:
             logging.info("Applying affine transformation to source_data")
             matrix, offset = self.affine_transform.inverse().matrix_form()
@@ -506,8 +518,18 @@ class Spalipy:
                 order=self.interp_order,
                 output_shape=self.output_shape,
             ).T
+            if self.source_mask is not None:
+                aligned_mask = interpolation.affine_transform(
+                    self.source_mask.T,
+                    matrix,
+                    offset=offset,
+                    order=0,
+                    output_shape=self.output_shape,
+                ).T
 
         self.aligned_data = aligned_data
+        if self.source_mask is not None:
+            self.aligned_mask = aligned_mask
 
     def log_transform_stats(self):
         n_match, dx_mean, dx_med, dx_std, dy_mean, dy_med, dy_std = self._residuals()
