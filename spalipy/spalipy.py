@@ -91,23 +91,38 @@ class Spalipy:
 
     Parameters
     ----------
-    source_data : numpy.ndarray
-        The source image data to be transformed.
+    source_data : numpy.ndarray or list
+        The source image data to be transformed. Can be passed as a list of
+        source images, in which case `source_det`, `source_mask` and
+        `output_shape` must match in length if they are not `None`.
+    source_mask : numpy.ndarray or list, optional
+        The source mask data to be transformed in the same manner as
+        `source_data`. This will always use nearest neighbour interpolation.
+        However, the propagation of mask values is not complete, and some pixels
+        in the source data that are correlated with masked pixels will not be
+        masked as such in the aligned mask (particularly true for isolated masked
+        pixels). If passing as a list, `None` entries can be used to indicate
+        individual images without masks.
     template_data : numpy.ndarray, optional
         The template image data to which the source image will be transformed.
-        Must be provided if `template_det` is `None`.
-    source_det, template_det : None or `astropy.table.Table`, optional
+        Must be provided if `template_det` is `None`. If both are given then
+        `template_det` takes precendence.
+    source_det, template_det : None or `astropy.table.Table` or list, optional
         The detection table for the relevant image. If `None` a basic
-        `sep.extract()` run will be performed (in this case both `source_data`
-         **and** `template_data` must both be given).
-    output_shape : None or tuple, optional
+        `sep.extract()` run will be performed to find sources. If passing
+        `source_det` as a list, `None` entries can be used to indicate individual
+         images where an internal extraction should be made. If `template_det`
+         is `None` then `template_data` cannot be `None`.
+    output_shape : None or tuple or list, optional
         The shape of the output aligned source image data. If `None`, output
-        shape is the same as `source_data`.
+        shape is the same as `source_data`. If passing as a list, `None` entries
+        can be used to indicate individual images where the output shape should
+        default to the same shape as the input source data.
     n_det : int or float, optional
         The number of detections to use in the alignment matching. Detections
         are sorted by the "flux" column so this will trim the detections to
         the `ndet` brightest detections in each image. If `0 < ndet <= 1`
-        then `ndet` is calculated as a fractional size of the source
+        then `ndet` is calculated as a fractional size of the respective
         detection table.
     n_quad_det : int, optional
         The number of detections to make quads from. This will create
@@ -157,6 +172,10 @@ class Spalipy:
         The minimum separation between coordinates in the table, useful
         to remove crowded sources that are problem for cross-matching.
         If omitted defaults to `2 * max_match_dist`.
+    skip_checking : boolean
+        Whether to skip some basic checking of input arguments for
+        minor speed up when setting-up. Useful when inputs are fixed
+        and already known.
     """
 
     x_col = "x"
@@ -168,12 +187,12 @@ class Spalipy:
 
     def __init__(
         self,
-        source_data: np.ndarray,
-        source_mask: np.ndarray = None,
+        source_data: Union[np.ndarray, list],
+        source_mask: Union[np.ndarray, list, None] = None,
         template_data: np.ndarray = None,
-        source_det: Optional[Table] = None,
+        source_det: Union[Table, list, None] = None,
         template_det: Optional[Table] = None,
-        output_shape: Optional[tuple] = None,
+        output_shape: Union[tuple, list, None] = None,
         n_det: Union[float, int, None] = None,
         n_quad_det: int = 20,
         min_quad_sep: int = 50,
@@ -189,27 +208,10 @@ class Spalipy:
         min_fwhm: float = 1,
         bad_flag_bits: int = 0,
         min_sep: float = None,
+        skip_checking: bool = False,
     ):
-        if np.ndim(source_data) != 2:
-            raise ValueError("source_data must be 2-dimensional array")
-        self.source_data = source_data.copy()
-        self.source_data_shape = source_data.shape
-        self.source_mask = source_mask
-        if self.source_mask is not None and self.source_mask.shape != self.source_data_shape:
-            raise ValueError(
-                f"source_mask shape {source_mask.shape} must match "
-                f"source_data shape {self.source_data_shape}"
-            )
 
-        if output_shape is None:
-            # Because of the way the interpolation routines output data, we use
-            # the transposed shape of our source_data here
-            output_shape = self.source_data_shape[::-1]
-        self.output_shape = output_shape
-
-        if min_sep is None:
-            min_sep = 2 * max_match_dist
-
+        self.n_det = n_det
         self.n_quad_det = n_quad_det
         self.min_quad_sep = min_quad_sep
         self.max_match_dist = max_match_dist
@@ -223,61 +225,164 @@ class Spalipy:
         self.sep_thresh = sep_thresh
         self.bad_flag_bits = bad_flag_bits
         self.min_fwhm = min_fwhm
-        self.min_sep = min_sep
+        self.min_sep = min_sep if min_sep is not None else 2 * max_match_dist
 
-        if source_det is None:
-            logging.info("Extracting detections from source_data")
-            source_det = self._extract_sources(source_data)
-        elif isinstance(source_det, Table):
-            source_det = source_det.copy()
-            logging.info(f"Found {len(source_det)} detections in source_det")
+        if isinstance(source_data, np.ndarray):
+            source_data = [source_data]
+            self._source_inputs_as_list = False
         else:
-            raise ValueError("source_det argument type not recognised")
-        # Need to calculate n_det here as it is used to prep detection tables
-        if isinstance(n_det, float):
-            n_det = int(n_det * len(source_det))
-        if n_det is not None and n_det < min_n_match:
-            raise ValueError(
-                f"n_det ({n_det}) < min_n_match ({min_n_match}) - no solution possible"
-            )
-        self.n_det = n_det
+            self._source_inputs_as_list = True
+        self._n_source_entry = len(source_data)
+        if source_mask is None or isinstance(source_mask, np.ndarray):
+            source_mask = [source_mask] * self._n_source_entry
+        if output_shape is None or isinstance(output_shape, tuple):
+            output_shape = [output_shape] * self._n_source_entry
+        if source_det is None or isinstance(source_det, Table):
+            source_det = [source_det] * self._n_source_entry
 
-        self.source_det_full = source_det
-        self.source_det = self._prep_detection_table(source_det)
-        logging.info(f"Using {len(self.source_det)} source detections in alignment")
-        self.source_coo = self._get_det_coords(self.source_det)
+        if not skip_checking:
+            for attr, typ, name in (
+                [source_data, np.ndarray, "source_data"],
+                [source_mask, np.ndarray, "source_mask"],
+                [source_det, Table, "source_det"],
+                [output_shape, tuple, "output_shape"],
+            ):
+                if not isinstance(attr, list):
+                    raise ValueError(
+                        f"The type of {name} was not of the correct type (expected {typ}, "
+                        f"got {type(attr)}"
+                    )
+                else:
+                    for i, _attr in enumerate(attr):
+                        if not isinstance(_attr, typ) and _attr is not None:
+                            raise ValueError(
+                                f"The type of {name} for entry {i} was not of the correct type "
+                                f"(expected one of {typ}, got {type(_attr)}"
+                            )
 
-        if template_data is None and template_det is None:
-            raise ValueError("One of template_data or template_det must be provided")
-        if isinstance(template_det, Table):
-            template_det = template_det.copy()
-            logging.info(f"Found {len(template_det)} detections in source_det")
-        elif template_det is not None:
-            raise ValueError("template_det argument type not recognised")
-        else:
-            if np.ndim(template_data) != 2:
-                raise ValueError(f"template_data must be 2-dimensional array")
-            logging.info("Extracting detections from template_data")
-            template_det = self._extract_sources(template_data)
-        self.template_det_full = template_det
-        self.template_det = self._prep_detection_table(template_det)
-        logging.info(f"Using {len(self.template_det)} template detections in alignment")
+            if len(source_data) != len(source_mask) != len(output_shape):
+                raise ValueError(
+                    "The lengths of source_data, source_mask and output_shape do not match"
+                )
+            for i, (_source_data, _source_mask) in enumerate(zip(source_data, source_mask)):
+                if _source_data.ndim != 2:
+                    raise ValueError(f"The dimensionality of source_data entry {i} is not 2")
+                if _source_mask is not None:
+                    if _source_data.shape != _source_mask.shape:
+                        raise ValueError(
+                            f"The shape of source_data and source_mask for entry {i} do not match"
+                        )
+            for i, _source_det in enumerate(source_det):
+                if _source_det is not None:
+                    if not isinstance(source_det, Table):
+                        raise ValueError(f"The object type for source_det entry {i} is unexpected")
+            if template_data is None and template_det is None:
+                raise ValueError("One of template_data or template_det must be provided")
+            if template_data is not None and template_data.ndim != 2:
+                raise ValueError(f"The dimensionality of template_data is not 2")
+
+        self._source_data = source_data
+        self._source_mask = source_mask
+        self._source_det = []
+        self._source_coo = []
+        self._output_shape = []
+        for i, (_source_data, _source_det, _output_shape) in enumerate(
+            zip(source_data, source_det, output_shape)
+        ):
+            logging.info(f"Processing source entry {i}")
+            det = _source_det or self._extract_detections(_source_data)
+            self._source_det.append(det)
+            coo = self._get_det_coords(det)
+            self._source_coo.append(coo)
+            shape = _output_shape or _source_data.shape
+            self._output_shape.append(shape)
+
+        self.template_data = template_data
+        template_det = template_det or self._extract_detections(template_data)
+        self.template_det = template_det
         self.template_coo = self._get_det_coords(self.template_det)
 
-        self.source_quadlist = []
-        self.template_quadlist = []
+        self._source_quadlist = None
+        self.template_quadlist = None
 
-        self.source_det_matched = None
-        self.template_det_matched = None
+        self._source_det_matched = None
+        self._template_det_matched = None
+        self._affine_transform = None
 
-        self.affine_transform = None
+        self._sbs_x = None
+        self._sbs_y = None
+        self._spline_transform = None
 
-        self.spline_transform = None
-        self.sbs_x = None
-        self.sbs_y = None
+        self._aligned_data = None
+        self._aligned_mask = None
 
-        self.aligned_data = None
-        self.aligned_mask = None
+        self._alignment_failed = [False] * self._n_source_entry
+
+    def _maybe_as_list(self, attr):
+        """Return a property in the same form as it was passed"""
+        if attr is None or self._source_inputs_as_list:
+            return attr
+        return attr[0]
+
+    @property
+    def source_data(self):
+        return self._maybe_as_list(self._source_data)
+
+    @property
+    def source_mask(self):
+        return self._maybe_as_list(self._source_mask)
+
+    @property
+    def source_det(self):
+        return self._maybe_as_list(self._source_det)
+
+    @property
+    def source_coo(self):
+        return self._maybe_as_list(self._source_coo)
+
+    @property
+    def source_quadlist(self):
+        return self._maybe_as_list(self._source_quadlist)
+
+    @property
+    def output_shape(self):
+        return self._maybe_as_list(self._output_shape)
+
+    @property
+    def source_det_matched(self):
+        return self._maybe_as_list(self._source_det_matched)
+
+    @property
+    def template_det_matched(self):
+        return self._maybe_as_list(self._template_det_matched)
+
+    @property
+    def affine_transform(self):
+        return self._maybe_as_list(self._affine_transform)
+
+    @property
+    def sbs_x(self):
+        return self._maybe_as_list(self._sbs_x)
+
+    @property
+    def sbs_y(self):
+        return self._maybe_as_list(self._sbs_y)
+
+    @property
+    def spline_transform(self):
+        return self._maybe_as_list(self._spline_transform)
+
+    @property
+    def aligned_data(self):
+        return self._maybe_as_list(self._aligned_data)
+
+    @property
+    def aligned_mask(self):
+        return self._maybe_as_list(self._aligned_mask)
+
+    @property
+    def alignment_failed(self):
+        return self._maybe_as_list(self._alignment_failed)
 
     def align(self):
         """Performs the full alignment routine and sets resulting aligned_data attribute"""
@@ -292,23 +397,55 @@ class Spalipy:
 
     def make_source_quadlist(self):
         """See `_make_quadlist()`"""
-        logging.info("Generating source quads")
-        self.source_quadlist = self._make_quadlist(self.source_coo)
+        source_quadlist = []
+        for i, source_coo in enumerate(self._source_coo):
+            logging.info(f"Generating source quads for entry {i}")
+            source_quadlist.append(self._make_quadlist(source_coo, self._source_data[i].shape))
+        self._source_quadlist = source_quadlist
 
     def make_template_quadlist(self):
         """See `_make_quadlist()`"""
         logging.info("Generating template quads")
-        template_quadlist = self._make_quadlist(self.template_coo)
-        # Flatten template quads into one list instead of split by sub-tile
+        # Pass the first source_data shape here, but practically it makes no difference ..
+        template_quadlist = self._make_quadlist(self.template_coo, self._source_data[0].shape)
+        # .. because template quads are flattened instead of split by sub-tile
         # since we cannot be sure that image overlap means sub-tiles in the
         # source correspond to those in the template
         self.template_quadlist = [q for quadlist in template_quadlist for q in quadlist]
 
     def fit_affine_transform(self):
         """
+        Calls fit_affine_transform for a list of source entries
+        """
+        source_det_matched = []
+        template_det_matched = []
+        affine_transform = []
+        for i in range(len(self._source_data)):
+            logging.info(f"Fitting affine transform and cross-matching for entry {i}")
+            (
+                _source_det_matched,
+                _template_matched_det,
+                _affine_transform,
+            ) = self._fit_affine_transform(i)
+            source_det_matched.append(_source_det_matched)
+            template_det_matched.append(_template_matched_det)
+            affine_transform.append(_affine_transform)
+        if all(self._alignment_failed):
+            raise RuntimeError("No source entries sucessfully found an affine transform")
+
+        self._source_det_matched = source_det_matched
+        self._template_det_matched = template_det_matched
+        self._affine_transform = affine_transform
+
+    def _fit_affine_transform(self, entry):
+        """
         Use the quadlist hashes to determine an initial guess at an affine
         transformation and determine matched detections lists. Then refine
         the transformation using the matched detection lists.
+
+        entry identifies the index number of the source entry being processed
+
+        Returns the source and template matched detections, and the affine transform.
         """
         # Template quads are always flattened
         template_hash = np.array([q[1] for q in self.template_quadlist])
@@ -318,12 +455,15 @@ class Spalipy:
         template_det_matched_full = []
         # Iterate over each sub-tile in the source_data and perform cross-matching
         # using a per-sub-tile transform
+        entry_shape = self._source_data[entry].shape
         for i, (source_quadlist, source_det) in enumerate(
-            zip(self.source_quadlist, self._sub_tile_det(self.source_det),), 1,
+            zip(
+                self._source_quadlist[entry],
+                self._sub_tile_det(self._source_det[entry], entry_shape),
+            ),
+            1,
         ):
-            logging.debug(
-                f"Fitting affine transform and cross-matching in sub-tile region {i}/{self.sub_tile ** 2}"
-            )
+            logging.debug(f"Processing sub-tile region {i}/{self.sub_tile ** 2}")
             source_hash = np.array([q[1] for q in source_quadlist])
             dists = distance.cdist(template_hash, source_hash)
             min_dist_idx = np.argmin(dists, axis=0)
@@ -392,14 +532,18 @@ class Spalipy:
             template_det_matched_full.append(template_det_matched)
 
         if n_match_full < self.min_n_match:
-            raise ValueError(
+            logging.error(
                 f"Number of affine transform matched detections "
                 f"({n_match_full}) < minumum required ({self.min_n_match})"
             )
+            logging.error(f"Alignment failed for entry {entry}")
+            self._alignment_failed[entry] = True
+            return None, None, None
         logging.info(
             f"Matched {n_match_full} detections within {self.max_match_dist} "
             f"pixels with initial affine transformation(s)"
         )
+        self._alignment_failed[entry] = False
 
         # Convert list of tables from sub-tiles into a single table
         source_det_matched = vstack(source_det_matched_full)
@@ -412,38 +556,65 @@ class Spalipy:
         template_match_coo = self._get_det_coords(template_det_matched)
         affine_transform = calc_affine_transform(source_match_coo, template_match_coo)
 
-        self.source_det_matched = source_det_matched
-        self.template_det_matched = template_det_matched
-        self.affine_transform = affine_transform
+        return source_det_matched, template_det_matched, affine_transform
 
     def fit_spline_transform(self):
         """
-        Determine the residual `x` and `y` offsets between matched coordinates
-        after affine transformation and fit 2D spline surfaces to describe the
-        spatially-varying correction to be applied.
+        Calls _fit_spline_transform for a list of source entries
         """
-
         if self.spline_order == 0:
             logging.info("Skipping spline transformation fit (spline order is 0)")
             return
 
+        sbs_x = []
+        sbs_y = []
+        spline_transform = []
+        for i in range(len(self._source_data)):
+            if self._alignment_failed[i]:
+                logging.info(f"Skipping spline transform for entry {i} due to failed alignment")
+                _sbs_x, _sbs_y, _spline_transform = None, None, None
+            else:
+                logging.info(f"Fitting spline transform for entry {i}")
+                _sbs_x, _sbs_y, _spline_transform = self._fit_spline_transform(i)
+            sbs_x.append(_sbs_x)
+            sbs_y.append(_sbs_y)
+            spline_transform.append(_spline_transform)
+        if all(self._alignment_failed):
+            raise RuntimeError("No source entries sucessfully found a spline transform")
+
+        self._sbs_x = sbs_x
+        self._sbs_y = sbs_y
+        self._spline_transform = spline_transform
+
+    def _fit_spline_transform(self, entry):
+        """
+        Determine the residual `x` and `y` offsets between matched coordinates
+        after affine transformation and fit 2D spline surfaces to describe the
+        spatially-varying correction to be applied.
+
+        entry identifies the index number of the source entry being processed.
+
+        Returns the smooth bivariate spline objects in x and y directions,
+        and the spline transform callable to transofrm coordinates.
+        """
+
         # Get the source, after affine transformation, and template coordinates
-        source_coo = self._get_det_coords(self.source_det_matched)
-        source_coo = self.affine_transform.apply_transform(source_coo)
-        template_coo = self._get_det_coords(self.template_det_matched)
+        source_coo = self._get_det_coords(self._source_det_matched[entry])
+        source_coo = self._affine_transform[entry].apply_transform(source_coo)
+        template_coo = self._get_det_coords(self._template_det_matched[entry])
 
         # Create splines describing the residual offsets in x and y left over
         # after the affine transformation
         kx = ky = self.spline_order
         try:
-            self.sbs_x = interpolate.SmoothBivariateSpline(
+            sbs_x = interpolate.SmoothBivariateSpline(
                 template_coo[:, 0],
                 template_coo[:, 1],
                 (template_coo[:, 0] - source_coo[:, 0]),
                 kx=kx,
                 ky=ky,
             )
-            self.sbs_y = interpolate.SmoothBivariateSpline(
+            sbs_y = interpolate.SmoothBivariateSpline(
                 template_coo[:, 0],
                 template_coo[:, 1],
                 (template_coo[:, 1] - source_coo[:, 1]),
@@ -454,7 +625,9 @@ class Spalipy:
             logging.error(
                 "scipy.interpolate.SmoothBivariateSpline raised dfitpackError (not enough sources?)"
             )
-            raise
+            logging.error(f"Alignment failed for entry {entry}")
+            self._alignment_failed[entry] = True
+            return None, None, None
 
         # Make a callable to map our coordinates using these splines
         def spline_transform(xy, relative=False):
@@ -471,96 +644,123 @@ class Spalipy:
                 x0 = y0 = 0
             if xy.ndim == 2:
                 xy = xy.T
-            spline_x_offsets = self.sbs_x.ev(xy[0], xy[1])
-            spline_y_offsets = self.sbs_y.ev(xy[0], xy[1])
+            spline_x_offsets = sbs_x.ev(xy[0], xy[1])
+            spline_y_offsets = sbs_y.ev(xy[0], xy[1])
             new_coo = np.array((x0 - spline_x_offsets, y0 - spline_y_offsets))
             if xy.ndim == 2:
                 return new_coo.T
             return new_coo
 
-        self.spline_transform = spline_transform
+        self._alignment_failed[entry] = False
+        return sbs_x, sbs_y, spline_transform
 
-    def full_transform(self, coo, inverse=True):
+    def full_transform(self, coo, entry, inverse=True):
         """Return transformed coordinates including both affine and spline transforms"""
         if inverse:
-            ft = self.affine_transform.inverse().apply_transform(coo)
-            if self.spline_transform is not None:
-                ft = ft + self.spline_transform(coo, relative=True)
+            ft = self._affine_transform[entry].inverse().apply_transform(coo)
+            if self._spline_transform is not None and self._spline_transform[entry] is not None:
+                ft = ft + self._spline_transform[entry](coo, relative=True)
         else:
-            ft = self.affine_transform.apply_transform(coo)
-            if self.spline_transform is not None:
-                ft = ft - self.spline_transform(coo, relative=True)
+            ft = self._affine_transform[entry].apply_transform(coo)
+            if self._spline_transform is not None and self._spline_transform[entry] is not None:
+                ft = ft - self._spline_transform[entry](coo, relative=True)
         return ft
 
     def transform_data(self):
-        """Perform the alignment and populate the aligned_data atrribute"""
+        """
+        Calls _transform_data for a list of source entries
+        """
+        aligned_data = []
+        aligned_mask = []
+        for i in range(len(self._source_data)):
+            if self._alignment_failed[i]:
+                logging.info(f"Skipping spline transform for entry {i} due to failed alignment")
+                _aligned_data, _aligned_mask = None, None
+            else:
+                logging.info(f"Aligning source data entry {i}")
+                _aligned_data, _aligned_mask = self._transform_data(i)
+            aligned_data.append(_aligned_data)
+            aligned_mask.append(_aligned_mask)
 
-        source_data_t = self.source_data.T
+        self._aligned_data = aligned_data
+        self._aligned_mask = aligned_mask
 
-        if self.spline_transform is not None:
+    def _transform_data(self, entry):
+        """
+        Perform the alignment and return aligned data and mask
+
+        entry identifies the index number of the source entry being processed.
+
+        Returns the aligned data and mask (will be None if no source mask for that
+        source entry).
+        """
+        aligned_mask = None
+        if self._spline_transform is not None and self._spline_transform[entry] is not None:
             logging.info("Applying affine + spline transformation to source_data")
-            xx, yy = np.meshgrid(np.arange(self.output_shape[0]), np.arange(self.output_shape[1]))
-            full_transform_coords_shift = self.full_transform(np.array([xx, yy]))
-            aligned_data = map_coordinates(
-                source_data_t, full_transform_coords_shift, order=self.interp_order
+            xx, yy = np.meshgrid(
+                np.arange(self._output_shape[entry][0]), np.arange(self._output_shape[entry][1])
             )
-            if self.source_mask is not None:
+            full_transform_coords_shift = self.full_transform(np.array([xx, yy]), entry)
+            aligned_data = map_coordinates(
+                self._source_data[entry].T, full_transform_coords_shift, order=self.interp_order
+            )
+            if self._source_mask[entry] is not None:
                 aligned_mask = map_coordinates(
-                    self.source_mask.T, full_transform_coords_shift, order=0
+                    self._source_mask[entry].T, full_transform_coords_shift, order=0
                 )
         else:
             logging.info("Applying affine transformation to source_data")
-            matrix, offset = self.affine_transform.inverse().matrix_form()
+            matrix, offset = self._affine_transform[entry].inverse().matrix_form()
             aligned_data = interpolation.affine_transform(
-                source_data_t,
+                self._source_data[entry].T,
                 matrix,
                 offset=offset,
                 order=self.interp_order,
-                output_shape=self.output_shape,
+                output_shape=self._output_shape[entry][::-1],
             ).T
-            if self.source_mask is not None:
+            if self._source_mask[entry] is not None:
                 aligned_mask = interpolation.affine_transform(
-                    self.source_mask.T,
+                    self._source_mask[entry].T,
                     matrix,
                     offset=offset,
                     order=0,
-                    output_shape=self.output_shape,
+                    output_shape=self._output_shape[entry][::-1],
                 ).T
 
-        self.aligned_data = aligned_data
-        if self.source_mask is not None:
-            self.aligned_mask = aligned_mask
+        return aligned_data, aligned_mask
 
     def log_transform_stats(self):
-        n_match, dx_mean, dx_med, dx_std, dy_mean, dy_med, dy_std = self._residuals()
-        logging.info(f"Matched {n_match} detections within {self.max_match_dist} pixels ")
-        logging.info("Pixel residuals between matched detections [mean, median (stddev)]:")
-        logging.info(f"x = {dx_mean:.3f}, {dx_med:.3f} ({dx_std:.3f})")
-        logging.info(f"y = {dy_mean:.3f}, {dy_med:.3f} ({dy_std:.3f})")
+        for i in range(len(self._source_data)):
+            logging.info(f"\nSource entry {i}:")
+            n_match, dx_mean, dx_med, dx_std, dy_mean, dy_med, dy_std = self._residuals(i)
+            logging.info(f"Matched {n_match} detections within {self.max_match_dist} pixels ")
+            logging.info("Pixel residuals between matched detections [mean, median (stddev)]:")
+            logging.info(f"x = {dx_mean:.3f}, {dx_med:.3f} ({dx_std:.3f})")
+            logging.info(f"y = {dy_mean:.3f}, {dy_med:.3f} ({dy_std:.3f})")
 
     def _get_det_coords(self, det):
         """Return 2D array of x, y pixel coordinates from a detection table"""
         cat_arr = det[self.x_col, self.y_col].as_array()
         return cat_arr.view((cat_arr.dtype[0], 2))
 
-    def _sub_tile_coo(self, coo):
+    def _sub_tile_coo(self, coo, shape):
         """Return a generator of coordinates in each sub-tile"""
-        for sub_tile_mask in self._sub_tile_mask(coo):
+        for sub_tile_mask in self._sub_tile_mask(coo, shape):
             yield coo[sub_tile_mask]
 
-    def _sub_tile_det(self, det):
+    def _sub_tile_det(self, det, shape):
         """Return a generator of detections in each sub-tile"""
         coo = self._get_det_coords(det)
-        for sub_tile_mask in self._sub_tile_mask(coo):
+        for sub_tile_mask in self._sub_tile_mask(coo, shape):
             yield det[sub_tile_mask]
 
-    def _sub_tile_mask(self, coo):
+    def _sub_tile_mask(self, coo, shape):
         """Return a generator of masks describing membership of sub-tiles"""
         if self.sub_tile == 1:
             yield slice(None)
         else:
-            width = self.source_data_shape[0]
-            height = self.source_data_shape[1]
+            width = shape[0]
+            height = shape[1]
             sub_tile_width = width / self.sub_tile
             sub_tile_height = height / self.sub_tile
             for i in range(self.sub_tile):
@@ -572,10 +772,8 @@ class Spalipy:
                     ) & (np.abs(sub_tile_centre_y - coo[:, 1]) <= (sub_tile_height / 2))
                     yield sub_tile_mask
 
-    def _extract_sources(self, data):
-        """Return an astropy Table of detections found in image data"""
-
-        data = data.copy()
+    def _extract_detections(self, data):
+        """Return an astropy Table of detections found in input data"""
 
         try:
             bkg = sep.Background(data)
@@ -586,12 +784,12 @@ class Spalipy:
         bkg_rms = bkg.rms()
         data_sub = data - bkg.back()
 
-        extracted_sources = sep.extract(data_sub, thresh=self.sep_thresh, err=bkg_rms,)
-        sources = Table(extracted_sources)
-        sources["fwhm"] = 2.0 * (np.log(2) * (sources["a"] ** 2.0 + sources["b"] ** 2.0)) ** 0.5
-        logging.info(f"Extracted {len(sources)} detections")
-
-        return sources
+        extracted_det = sep.extract(data_sub, thresh=self.sep_thresh, err=bkg_rms,)
+        det = Table(extracted_det)
+        det["fwhm"] = 2.0 * (np.log(2) * (det["a"] ** 2.0 + det["b"] ** 2.0)) ** 0.5
+        logging.info(f"Initially extracted {len(det)} detections")
+        det = self._prep_detection_table(det)
+        return det
 
     def _prep_detection_table(self, det):
         """Filter detection table to a subset of rows and columns to be used in alignment"""
@@ -608,21 +806,36 @@ class Spalipy:
             to_remove = [det for pair in close_pairs for det in pair]
             if to_remove:
                 det.remove_rows(np.unique(to_remove))
+
+        if isinstance(self.n_det, float):
+            n_det = int(self.n_det * len(det))
+        else:
+            n_det = self.n_det
+
         if self.n_det is not None:
-            det = det[: self.n_det]
+            det = det[:n_det]
+        logging.info(f"Using {len(det)} detections in alignment")
+
+        if len(det) < self.min_n_match:
+            raise ValueError(
+                f"Number of detections found is less than min_n_match ({self.min_n_match}) "
+                "- no solution possible"
+            )
 
         return det
 
-    def _make_quadlist(self, coo):
+    def _make_quadlist(self, coo, shape):
         """
         Create hashes for "quads" of detection coordinates
 
         The quads are returned in a list of lists, where each parent list
         represents the quads made in a separate sub_tile of the image.
+
+        shape is used when iterating over subtiles.
         """
 
         full_quadlist = []
-        for _coo in self._sub_tile_coo(coo):
+        for _coo in self._sub_tile_coo(coo, shape):
             if self.n_quad_det > len(_coo):
                 logging.warning(
                     f"Low number of detections found - restricting number of "
@@ -642,7 +855,9 @@ class Spalipy:
 
         return full_quadlist
 
-    def _match_dets(self, source_det: Table, transform: Optional[AffineTransform] = None):
+    def _match_dets(
+        self, source_det: Table, transform: Optional[AffineTransform] = None, entry=None
+    ):
         """
         Match detections between source and template tables.
 
@@ -657,7 +872,7 @@ class Spalipy:
         if transform is not None:
             source_coo_trans = transform.apply_transform(source_coo)
         else:
-            source_coo_trans = self.full_transform(source_coo, inverse=False)
+            source_coo_trans = self.full_transform(source_coo, entry, inverse=False)
         matched, dists_argsort = self._match_coo(source_coo_trans)
         source_det_matched = source_det[matched]
         template_det_matched = self.template_det[dists_argsort[matched, 0]]
@@ -678,13 +893,15 @@ class Spalipy:
 
         return matched, dists_argsort
 
-    def _residuals(self):
+    def _residuals(self, entry):
         """Returns statistics for residual offsets, after transformation"""
 
-        n_match, source_det_matched, template_det_matched = self._match_dets(self.source_det)
-        source_coo = self._get_det_coords(self.source_det_matched)
-        source_coo_trans = self.full_transform(source_coo, inverse=False)
-        template_coo = self._get_det_coords(self.template_det_matched)
+        n_match, source_det_matched, template_det_matched = self._match_dets(
+            self._source_det[entry], entry=entry
+        )
+        source_coo = self._get_det_coords(self._source_det_matched[entry])
+        source_coo_trans = self.full_transform(source_coo, entry, inverse=False)
+        template_coo = self._get_det_coords(self._template_det_matched[entry])
 
         dx = template_coo[:, 0] - source_coo_trans[:, 0]
         dy = template_coo[:, 1] - source_coo_trans[:, 1]
