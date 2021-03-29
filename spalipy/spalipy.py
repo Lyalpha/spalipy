@@ -273,9 +273,8 @@ class Spalipy:
                             f"The shape of source_data and source_mask for entry {i} do not match"
                         )
             for i, _source_det in enumerate(source_det):
-                if _source_det is not None:
-                    if not isinstance(source_det, Table):
-                        raise ValueError(f"The object type for source_det entry {i} is unexpected")
+                if _source_det is not None and not isinstance(_source_det, Table):
+                    raise ValueError(f"The object type for source_det entry {i} is unexpected")
             if template_data is None and template_det is None:
                 raise ValueError("One of template_data or template_det must be provided")
             if template_data is not None and template_data.ndim != 2:
