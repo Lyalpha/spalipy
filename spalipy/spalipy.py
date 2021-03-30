@@ -290,6 +290,7 @@ class Spalipy:
         ):
             logging.info(f"Processing source entry {i}")
             det = _source_det or self._extract_detections(_source_data)
+            det = self._prep_detection_table(det)
             self._source_det.append(det)
             coo = self._get_det_coords(det)
             self._source_coo.append(coo)
@@ -298,8 +299,10 @@ class Spalipy:
 
         self.template_data = template_data
         template_det = template_det or self._extract_detections(template_data)
+        template_det = self._prep_detection_table(template_det)
         self.template_det = template_det
         self.template_coo = self._get_det_coords(self.template_det)
+        self.template_coo_tree = cKDTree(self.template_coo)
 
         self._source_quadlist = None
         self.template_quadlist = None
@@ -787,7 +790,7 @@ class Spalipy:
         det = Table(extracted_det)
         det["fwhm"] = 2.0 * (np.log(2) * (det["a"] ** 2.0 + det["b"] ** 2.0)) ** 0.5
         logging.info(f"Initially extracted {len(det)} detections")
-        det = self._prep_detection_table(det)
+
         return det
 
     def _prep_detection_table(self, det):
