@@ -875,25 +875,28 @@ class Spalipy:
             source_coo_trans = transform.apply_transform(source_coo)
         else:
             source_coo_trans = self.full_transform(source_coo, entry, inverse=False)
-        matched, dists_argsort = self._match_coo(source_coo_trans)
-        source_det_matched = source_det[matched]
-        template_det_matched = self.template_det[dists_argsort[matched, 0]]
-        return np.sum(matched), source_det_matched, template_det_matched
+        source_matched_mask, template_matched_idxs = self._match_coo(source_coo_trans)
+        source_det_matched = source_det[source_matched_mask]
+        template_det_matched = self.template_det[template_matched_idxs]
+        return np.sum(source_matched_mask), source_det_matched, template_det_matched
 
     def _match_coo(self, source_coo_trans: np.ndarray):
         """Match transformed source and template coordinates"""
-        dists = distance.cdist(source_coo_trans, self.template_coo)
-        dists_argsort = np.argsort(dists, axis=1)
-        dists_sort = dists[np.arange(np.shape(dists)[0])[:, np.newaxis], dists_argsort]
-        # For a match, we require the match distance to be within our limit, and
-        # that the second nearest object is double that distance. This is a
-        # crude method to alleviate double matches, maybe caused by aggressive
-        # segmentation in the source catalogues.
-        matched = (dists_sort[:, 0] <= self.max_match_dist) & (
-            dists_sort[:, 1] >= 2 * self.max_match_dist
-        )
 
-        return matched, dists_argsort
+        # Obtain the two nearest neighbours matches in the template to
+        # the transformed source coordinates. The upper bound means that
+        # any beyond this distance are filled with inf values.
+        dists, idxs = self.template_coo_tree.query(
+            source_coo_trans, k=2, distance_upper_bound=2 * self.max_match_dist
+        )
+        # For a match, we require the match distance to be within our limit, and
+        # that the second nearest object is at least double that distance. This is
+        # a crude method to alleviate double matches, maybe caused by aggressive
+        # segmentation in the source catalogues.
+        source_matched_mask = (dists[:, 0] < self.max_match_dist) & np.isinf(dists[:, 1])
+        template_matched_idxs = idxs[source_matched_mask, 0]
+
+        return source_matched_mask, template_matched_idxs
 
     def _residuals(self, entry):
         """Returns statistics for residual offsets, after transformation"""
