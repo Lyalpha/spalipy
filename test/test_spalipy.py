@@ -150,7 +150,7 @@ class TestSpalipy(unittest.TestCase):
         assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple)
         assert np.sum(sp.aligned_mask) == 1894
 
-    def test_multi_align(self):
+    def test_multi_simple_align(self):
         """Test passing multiple arrays to align produces expected affine transformations"""
         sp = Spalipy(
             [self.source_data, self.source_data, self.source_data],
