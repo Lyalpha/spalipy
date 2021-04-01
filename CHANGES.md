@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - 2021-03
+## [3.0.0] - 2021-04
  - Can now align multiple images in sequence by passing lists for arguments relating to
    source data, detections, shapes etc.
  - Can now pass a `source_mask` to the main `Spalipy` constructor. This mask will be transformed, using
@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - Make `n_det` optional. Default `None` will now not cut the length of the detections
    - Reduce default `sub_tile` from `2` to `1`
    - Reduce default `max_match_dist` from `5` to `3`
+ - The cross-matching algorithm now uses `scipy.spatial.cKDTree` for a speed-up with large detection lists  
  - Fixed bug when calling cli scripts without full arguments specified
  - Change `sep` version requirements from `1.0.3` to `1.1.1`
  - First appearance of actual tests(!)
