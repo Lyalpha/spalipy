@@ -28,7 +28,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Lyalpha/spalipy",
-    download_url="https://github.com/Lyalpha/spalipy/archive/2.0.3.tar.gz",
+    download_url="https://github.com/Lyalpha/spalipy/archive/3.0.0.tar.gz",
     packages=setuptools.find_packages(),
     entry_points={
         "console_scripts": [
