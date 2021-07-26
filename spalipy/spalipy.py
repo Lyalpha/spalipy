@@ -640,12 +640,12 @@ class Spalipy:
             otherwise return the absolute pixel value of the transformed
             coordinates
             """
+            if xy.ndim == 2:
+                xy = xy.T
             x0 = xy[0]
             y0 = xy[1]
             if relative is True:
                 x0 = y0 = 0
-            if xy.ndim == 2:
-                xy = xy.T
             spline_x_offsets = sbs_x.ev(xy[0], xy[1])
             spline_y_offsets = sbs_y.ev(xy[0], xy[1])
             new_coo = np.array((x0 - spline_x_offsets, y0 - spline_y_offsets))
