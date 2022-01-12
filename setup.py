@@ -21,14 +21,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="spalipy",
-    version="3.0.1",
+    version="3.0.2",
     author="Joe Lyman",
     author_email="joedlyman@gmail.com",
     description="Detection-based astrononmical image registration",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Lyalpha/spalipy",
-    download_url="https://github.com/Lyalpha/spalipy/archive/3.0.1.tar.gz",
+    download_url="https://github.com/Lyalpha/spalipy/archive/3.0.2.tar.gz",
     packages=setuptools.find_packages(),
     entry_points={
         "console_scripts": [
@@ -36,7 +36,7 @@ setuptools.setup(
             "align-fits-simple=spalipy.spalipy:main_simple",
         ]
     },
-    install_requires=["astropy>=3.2.2", "numpy>=1.10", "scipy>=1.1.0", "sep~=1.1.1"][::-1],
+    install_requires=["astropy>=3.2.2", "numpy>=1.10", "scipy>=1.1.0", "sep>=1.1.1"][::-1],
     classifiers=[
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
