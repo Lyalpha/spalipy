@@ -1,4 +1,4 @@
 astropy>=3.1.0
 numpy>=1.10
 scipy>=1.1.0
-sep~=1.1.1
+sep>=1.1.1
