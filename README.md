@@ -31,6 +31,8 @@ as:
 ```
 align-fits-simple source.fits source_aligned.fits template.fits
 ```
+Where `source.fits` is the image to be aligned to the supplied `template.fits`,
+and `source_aligned.fits` is where the result should be written.
 
 To take advantage of all the dials and sliders to tweak the alignment,
 take a look at the entire parameter descriptions via:
@@ -64,9 +66,6 @@ has not been performed.
 *__Note:__ the affine transformation uses `scipy.interpolation.affine_transform`
 which doesn't handle nans properly, therefore replace all nan values
 in the `source` image prior to running `spalipy`.*
-
-
-
 
 
 ## Examples
