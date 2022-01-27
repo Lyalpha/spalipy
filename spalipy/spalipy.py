@@ -150,6 +150,11 @@ class Spalipy:
         If the affine transformation calculated from a quad does not yield
         a larger number of cross-matches than the current best transformation
         for this number of candidates, then early stop the fitting.
+    quad_edge_buffer : int, optional
+        Do not use quads that are within this many pixels of the edge of the
+        image. This can help prevent trying to match quads that will be outside
+        the overlap between source and template images, if there is prior knowledge
+        that the tranlation will be significant, for example.
     max_quad_hash_dist : float, optional
         Limit on quad distances to consider a match.
     spline_order : int, optional
@@ -206,6 +211,7 @@ class Spalipy:
         min_n_match: int = 100,
         sub_tile: int = 1,
         max_quad_cand: int = 10,
+        quad_edge_buffer: int = 0,
         patience_quad_cand: int = 2,
         max_quad_hash_dist: float = 0.005,
         spline_order: int = 3,
@@ -226,6 +232,7 @@ class Spalipy:
         self.min_n_match = min_n_match
         self.sub_tile = sub_tile
         self.max_quad_cand = max_quad_cand
+        self.quad_edge_buffer = quad_edge_buffer
         self.patience_quad_cand = patience_quad_cand
         self.max_quad_hash_dist = max_quad_hash_dist
         self.spline_order = spline_order
@@ -763,24 +770,37 @@ class Spalipy:
         cat_arr = det[self.x_col, self.y_col].as_array()
         return cat_arr.view((cat_arr.dtype[0], 2))
 
-    def _sub_tile_coo(self, coo, shape):
+    def _sub_tile_coo(self, coo, shape, edge_buffer=0):
         """Return a generator of coordinates in each sub-tile"""
-        for sub_tile_mask in self._sub_tile_mask(coo, shape):
+        for sub_tile_mask in self._sub_tile_mask(coo, shape, edge_buffer):
             yield coo[sub_tile_mask]
 
-    def _sub_tile_det(self, det, shape):
+    def _sub_tile_det(self, det, shape, edge_buffer=0):
         """Return a generator of detections in each sub-tile"""
         coo = self._get_det_coords(det)
-        for sub_tile_mask in self._sub_tile_mask(coo, shape):
+        for sub_tile_mask in self._sub_tile_mask(coo, shape, edge_buffer):
             yield det[sub_tile_mask]
 
-    def _sub_tile_mask(self, coo, shape):
+    def _sub_tile_mask(self, coo, shape, edge_buffer):
         """Return a generator of masks describing membership of sub-tiles"""
-        if self.sub_tile == 1:
-            yield slice(None)
+        width = shape[0]
+        height = shape[1]
+        if edge_buffer > 0:
+            edge_mask = (
+                (coo[:, 0] >= edge_buffer)
+                & (coo[:, 0] <= width - edge_buffer)
+                & (coo[:, 1] >= edge_buffer)
+                & (coo[:, 1] <= height - edge_buffer)
+            )
         else:
-            width = shape[0]
-            height = shape[1]
+            edge_mask = None
+
+        if self.sub_tile == 1:
+            if edge_mask is not None:
+                yield edge_mask
+            else:
+                yield slice(None)
+        else:
             sub_tile_width = width / self.sub_tile
             sub_tile_height = height / self.sub_tile
             for i in range(self.sub_tile):
@@ -790,6 +810,8 @@ class Spalipy:
                     sub_tile_mask = (
                         np.abs(sub_tile_centre_x - coo[:, 0]) <= (sub_tile_width / 2)
                     ) & (np.abs(sub_tile_centre_y - coo[:, 1]) <= (sub_tile_height / 2))
+                    if edge_mask is not None:
+                        sub_tile_mask &= edge_mask
                     yield sub_tile_mask
 
     def _extract_detections(self, data):
@@ -855,7 +877,9 @@ class Spalipy:
         """
 
         full_quadlist = []
-        for _coo in self._sub_tile_coo(coo, shape):
+        for _coo in self._sub_tile_coo(coo, shape, self.quad_edge_buffer):
+            if len(_coo) < 4:
+                raise ValueError("Not enough detections found in sub_tile to constuct a quad")
             if self.n_quad_det > len(_coo):
                 logging.warning(
                     f"Low number of detections found - restricting number of "
@@ -1245,6 +1269,16 @@ def main(args=None):
         "transformation for this number of candidates, then early stop "
         "the fitting.",
     )
+    parser.add_argument(
+        "--patience-quad-cand",
+        type=int,
+        default=2,
+        help="Do not use quads that are within this many pixels of the edge of the "
+        "image. This can help prevent trying to match quads that will be outside "
+        "the overlap between source and template images, if there is prior knowledge "
+        "that the tranlation will be significant, for example.",
+    )
+
     parser.add_argument(
         "--max-quad-hash-dist",
         type=float,

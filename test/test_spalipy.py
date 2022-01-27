@@ -25,7 +25,7 @@ SHAPE = (380, 400)  # size of images used for testing
 BUFFER = 50  # buffer for creating sources outside shape, to allow for transformations
 
 
-def generate_image(translate=(0, 0), rotate=0.0, scale=1.0, num_sources=80, seed=0):
+def generate_image(translate=(0, 0), rotate=0.0, scale=1.0, num_sources=180, seed=0):
     """Create an array of a simulated astronomical image."""
     rng = np.random.default_rng(seed)
     # Define a fixed seed rng - source positions and relative fluxes must make sense
@@ -119,6 +119,7 @@ class TestSpalipy(unittest.TestCase):
         self.expected_affine_transform_simple = np.array(
             [0.41667194, -0.72168413, -26.18380622, 281.10079443]
         )
+        self.expected_affine_transform_quad_edge_buffer = np.array([])
 
     def test_simple_align(self):
         """Test simple alignment produces expected affine transformation."""
@@ -164,3 +165,29 @@ class TestSpalipy(unittest.TestCase):
         assert isinstance(sp.aligned_data, list)
         for affine_transform in sp.affine_transform:
             assert np.allclose(affine_transform.v, self.expected_affine_transform_simple)
+
+    def test_quad_edge_buffer(self):
+        sp = Spalipy(
+            self.source_data,
+            template_data=self.template_data,
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=0,
+            quad_edge_buffer=max(SHAPE),
+        )
+        with self.assertRaises(ValueError):
+            sp.make_source_quadlist()
+        with self.assertRaises(ValueError):
+            sp.make_template_quadlist()
+        sp = Spalipy(
+            self.source_data,
+            template_data=self.template_data,
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=0,
+            quad_edge_buffer=100,
+        )
+        sp.align()
+        assert len(sp.source_quadlist[0]) == 39
+        assert len(sp.template_quadlist[0]) == 2
+        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple)
