@@ -172,6 +172,12 @@ class Spalipy:
         The minimum separation between coordinates in the table, useful
         to remove crowded sources that are problem for cross-matching.
         If omitted defaults to `2 * max_match_dist`.
+    cval : float, optional
+        The value used to fill regions of the aligned data where
+        there is no overlap with template image.
+    cval_mask : float, optional
+        The value used to fill regions of the aligned mask where
+        there is no overlap with template image.
     skip_checking : boolean
         Whether to skip some basic checking of input arguments for
         minor speed up when setting-up. Useful when inputs are fixed
@@ -208,6 +214,8 @@ class Spalipy:
         min_fwhm: float = 1,
         bad_flag_bits: int = 0,
         min_sep: float = None,
+        cval: float = 0,
+        cval_mask: float = 0,
         skip_checking: bool = False,
     ):
 
@@ -226,6 +234,8 @@ class Spalipy:
         self.bad_flag_bits = bad_flag_bits
         self.min_fwhm = min_fwhm
         self.min_sep = min_sep if min_sep is not None else 2 * max_match_dist
+        self.cval = cval
+        self.cval_mask = cval_mask
 
         if isinstance(source_data, np.ndarray):
             source_data = [source_data]
@@ -704,11 +714,17 @@ class Spalipy:
             )
             full_transform_coords_shift = self.full_transform(np.array([xx, yy]), entry)
             aligned_data = map_coordinates(
-                self._source_data[entry].T, full_transform_coords_shift, order=self.interp_order
+                self._source_data[entry].T,
+                full_transform_coords_shift,
+                order=self.interp_order,
+                cval=self.cval,
             )
             if self._source_mask[entry] is not None:
                 aligned_mask = map_coordinates(
-                    self._source_mask[entry].T, full_transform_coords_shift, order=0
+                    self._source_mask[entry].T,
+                    full_transform_coords_shift,
+                    order=0,
+                    cval=self.cval_mask,
                 )
         else:
             logging.info("Applying affine transformation to source_data")
@@ -719,6 +735,7 @@ class Spalipy:
                 offset=offset,
                 order=self.interp_order,
                 output_shape=self._output_shape[entry][::-1],
+                cval=self.cval,
             ).T
             if self._source_mask[entry] is not None:
                 aligned_mask = interpolation.affine_transform(
@@ -727,6 +744,7 @@ class Spalipy:
                     offset=offset,
                     order=0,
                     output_shape=self._output_shape[entry][::-1],
+                    cval=self.cval_mask,
                 ).T
 
         return aligned_data, aligned_mask
@@ -1273,6 +1291,20 @@ def main(args=None):
         help="The minimum separation between coordinates in the table, "
         "useful to remove crowded sources that are problem for "
         "cross-matching. If omitted defaults to `2 * max_match_dist`.",
+    )
+    parser.add_argument(
+        "--cval",
+        type=float,
+        default=0,
+        help="The value used to fill regions of the aligned data where "
+        "there is no overlap with template image.",
+    )
+    parser.add_argument(
+        "--cval-mask",
+        type=float,
+        default=0,
+        help="The value used to fill regions of the aligned mask where "
+        "there is no overlap with template image.",
     )
     parser.add_argument(
         "--overwrite",
