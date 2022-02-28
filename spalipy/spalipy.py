@@ -18,6 +18,7 @@ import argparse
 import itertools
 import logging
 import os
+from functools import partial
 from typing import Optional, Union
 
 import numpy as np
@@ -649,7 +650,7 @@ class Spalipy:
             return None, None, None
 
         # Make a callable to map our coordinates using these splines
-        def spline_transform(xy, relative=False):
+        def spline_transform(xy, _sbs_x, _sbs_y, relative=False):
             """
             Return x,y coordinates or shifts after spline transformation
 
@@ -671,7 +672,7 @@ class Spalipy:
             return new_coo
 
         self._alignment_failed[entry] = False
-        return sbs_x, sbs_y, spline_transform
+        return sbs_x, sbs_y, partial(spline_transform, _sbs_x=sbs_x, _sbs_y=sbs_y)
 
     def full_transform(self, coo, entry, inverse=True):
         """Return transformed coordinates including both affine and spline transforms"""
