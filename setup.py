@@ -16,12 +16,14 @@
 
 import setuptools
 
+from spalipy import __version__
+
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="spalipy",
-    version="3.1.0",
+    version=__version__,
     author="Joe Lyman",
     author_email="joedlyman@gmail.com",
     description="Detection-based astrononmical image registration",
