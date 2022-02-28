@@ -720,20 +720,20 @@ class Spalipy:
             xx, yy = np.meshgrid(
                 np.arange(self._output_shape[entry][0]), np.arange(self._output_shape[entry][1])
             )
-            full_transform_coords_shift = self.full_transform(np.array([xx, yy]), entry)
+            full_transform_coords_shift = self.full_transform(np.array([yy, xx]), entry)
             aligned_data = map_coordinates(
                 self._source_data[entry].T,
                 full_transform_coords_shift,
                 order=self.interp_order,
                 cval=self.cval,
-            )
+            ).T
             if self._source_mask[entry] is not None:
                 aligned_mask = map_coordinates(
                     self._source_mask[entry].T,
                     full_transform_coords_shift,
                     order=0,
                     cval=self.cval_mask,
-                )
+                ).T
         else:
             logging.info("Applying affine transformation to source_data")
             matrix, offset = self._affine_transform[entry].inverse().matrix_form()
