@@ -117,7 +117,7 @@ class TestSpalipy(unittest.TestCase):
         self.source_mask[100:105, 330:335] = 16
 
         self.expected_affine_transform_simple = np.array(
-            [0.41667194, -0.72168413, -26.18380622, 281.10079443]
+            [0.41713655, -0.72205574, -26.36528175, 281.10807233]
         )
         self.expected_affine_transform_quad_edge_buffer = np.array([])
 
@@ -131,9 +131,23 @@ class TestSpalipy(unittest.TestCase):
             spline_order=0,
         )
         sp.align()
-        assert isinstance(sp.aligned_data, np.ndarray)
         assert sp.aligned_data.shape == SHAPE
         assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple)
+
+    def test_spline_align(self):
+        """Test that spline alignment is performed correctly"""
+        sp = Spalipy(
+            self.source_data,
+            template_data=self.template_data,
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=1,
+        )
+        sp.align()
+        assert sp.aligned_data.shape == SHAPE
+        # Inclusion of a spline order should not affect the initial affine transform
+        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple)
+        # TODO more checking of spline alignment
 
     def test_mask_align(self):
         """Test inclusion of mask does not affect alignment and produces
@@ -149,7 +163,7 @@ class TestSpalipy(unittest.TestCase):
         )
         sp.align()
         assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple)
-        assert np.sum(sp.aligned_mask) == 1894
+        assert np.sum(sp.aligned_mask) == 1839
 
     def test_multi_simple_align(self):
         """Test passing multiple arrays to align produces expected affine transformations"""
@@ -188,6 +202,6 @@ class TestSpalipy(unittest.TestCase):
             quad_edge_buffer=100,
         )
         sp.align()
-        assert len(sp.source_quadlist[0]) == 39
+        assert len(sp.source_quadlist[0]) == 424
         assert len(sp.template_quadlist[0]) == 2
         assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple)
