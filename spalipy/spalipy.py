@@ -118,7 +118,8 @@ class Spalipy:
         The shape of the output aligned source image data. If `None`, output
         shape is the same as `source_data`. If passing as a list, `None` entries
         can be used to indicate individual images where the output shape should
-        default to the same shape as the input source data.
+        default to the same shape as the input source data. If `preserve_footprints`
+        then this value is not used, and will be overwritten.
     n_det : int or float, optional
         The number of detections to use in the alignment matching. Detections
         are sorted by the "flux" column so this will trim the detections to
@@ -178,6 +179,14 @@ class Spalipy:
         The minimum separation between coordinates in the table, useful
         to remove crowded sources that are problem for cross-matching.
         If omitted defaults to `2 * max_match_dist`.
+    preserve_footprints : bool, optional
+        If `True` then the full footprints of all images will be
+        preserved, including non-overlapping rehions. This translates the
+        pixel coordinate system of the template data (and detections)
+        meaning objects will not be at the same position in the output
+        as they were in the input. This will affect the size of the
+        output template and source data, as well as overrulling any
+        `output_shape` argument provided.
     cval : float, optional
         The value used to fill regions of the aligned data where
         there is no overlap with template image.
@@ -221,6 +230,7 @@ class Spalipy:
         min_fwhm: float = 1,
         bad_flag_bits: int = 0,
         min_sep: float = None,
+        preserve_footprints: bool = False,
         cval: float = 0,
         cval_mask: float = 0,
         skip_checking: bool = False,
@@ -242,6 +252,7 @@ class Spalipy:
         self.bad_flag_bits = bad_flag_bits
         self.min_fwhm = min_fwhm
         self.min_sep = min_sep if min_sep is not None else 2 * max_match_dist
+        self.preserve_footprints = preserve_footprints
         self.cval = cval
         self.cval_mask = cval_mask
 
@@ -315,6 +326,7 @@ class Spalipy:
             shape = _output_shape or _source_data.shape
             self._output_shape.append(shape)
 
+        logging.info(f"Processing template")
         self.template_data = template_data
         template_det = template_det or self._extract_detections(template_data)
         template_det = self._prep_detection_table(template_det)
@@ -337,6 +349,10 @@ class Spalipy:
         self._aligned_mask = None
 
         self._alignment_failed = [False] * self._n_source_entry
+
+        self._corrected_footprints = False
+        self._anchor_width = 0
+        self._anchor_height = 0
 
     def _maybe_as_list(self, attr):
         """Return a property in the same form as it was passed"""
@@ -676,14 +692,17 @@ class Spalipy:
 
     def full_transform(self, coo, entry, inverse=True):
         """Return transformed coordinates including both affine and spline transforms"""
+        # Need to correct the spline coorinates used for any anchoring (padding) done to the
+        # coordinate system when preserving footprints.
+        spline_coo_offset = np.array([self._anchor_height, self._anchor_width]).reshape(2, 1, 1)
         if inverse:
             ft = self._affine_transform[entry].inverse().apply_transform(coo)
             if self._spline_transform is not None and self._spline_transform[entry] is not None:
-                ft = ft + self._spline_transform[entry](coo, relative=True)
+                ft = ft + self._spline_transform[entry](coo - spline_coo_offset, relative=True)
         else:
             ft = self._affine_transform[entry].apply_transform(coo)
             if self._spline_transform is not None and self._spline_transform[entry] is not None:
-                ft = ft - self._spline_transform[entry](coo, relative=True)
+                ft = ft - self._spline_transform[entry](coo - spline_coo_offset, relative=True)
         return ft
 
     def transform_data(self):
@@ -692,9 +711,72 @@ class Spalipy:
         """
         aligned_data = []
         aligned_mask = []
+        if self.preserve_footprints and not self._corrected_footprints:
+            logging.info("Calculating footprints of transformed source images")
+            # Track the aligned image bounds, relative to the template, for all source image
+            # entries. Do this by applying the affine transform to the corner points of each
+            # source image and tracking the maximum extents found in the resulting images.
+            min_width, min_height, max_width, max_height = np.inf, np.inf, -np.inf, -np.inf
+            for i in range(len(self._source_data)):
+                if self._alignment_failed[i]:
+                    continue
+                source_height, source_width = self._source_data[i].shape
+                # Bit of an odd way need to grab the needed numbers of the transform. I think
+                # the direction of the transformation doesn't line up with what scipy expects and
+                # also looks like the affine transformation is calculated in wrong major order
+                imatrix, _ = self._affine_transform[i].inverse().matrix_form()
+                _, offset = self._affine_transform[i].matrix_form()
+                offset = offset[::-1]
+                corner_points = np.array(
+                    [
+                        [0, source_height - 1, source_height - 1, 0],
+                        [0, 0, source_width - 1, source_width - 1],
+                    ]
+                )
+                transformed_corner_points = np.dot(imatrix, corner_points) + offset.reshape(2, 1)
+                min_width = min(min_width, np.min(transformed_corner_points[1]).astype(int))
+                min_height = min(min_height, np.min(transformed_corner_points[0]).astype(int))
+                max_width = max(max_width, np.max(transformed_corner_points[1]).astype(int))
+                max_height = max(max_height, np.max(transformed_corner_points[0]).astype(int))
+            anchor_width = -min(0, min_width)
+            anchor_height = -min(0, min_height)
+
+            # Pad the template image to the size required
+            template_height, template_width = self.template_data.shape
+            pad_widths = [
+                anchor_height,
+                max(max_height, template_height) - template_height,
+                anchor_width,
+                max(max_width, template_width) - template_width,
+            ]
+            self.template_data = np.pad(
+                self.template_data,
+                ((pad_widths[0], pad_widths[1]), (pad_widths[2], pad_widths[3])),
+                "constant",
+                constant_values=self.cval,
+            )
+            # Overrule any output shapes that have been set
+            self._output_shape = [self.template_data.shape] * len(self._source_data)
+            # Update offsets for all source affine transforms to match new, padded pixel coordinates
+            for i in range(len(self._source_data)):
+                if self._alignment_failed[i]:
+                    continue
+                # Again, very convoluted way to get the needed numbers of the transform, but
+                # it gives the desired result
+                matrix, _ = self._affine_transform[i].matrix_form()
+                imatrix, ioffset = self._affine_transform[i].inverse().matrix_form()
+                ioffset = ioffset[::-1]
+                dot_anchor = np.dot(matrix, [anchor_height, anchor_width])
+                shifted_offset = ioffset - dot_anchor
+                self._affine_transform[i] = AffineTransform(
+                    [imatrix[0, 0], imatrix[1, 0], shifted_offset[1], shifted_offset[0]]
+                ).inverse()
+            self._corrected_footprints = True
+            self._anchor_width = anchor_width
+            self._anchor_height = anchor_height
         for i in range(len(self._source_data)):
             if self._alignment_failed[i]:
-                logging.info(f"Skipping spline transform for entry {i} due to failed alignment")
+                logging.info(f"Skipping transform for entry {i} due to failed alignment")
                 _aligned_data, _aligned_mask = None, None
             else:
                 logging.info(f"Aligning source data entry {i}")
@@ -738,22 +820,22 @@ class Spalipy:
             logging.info("Applying affine transformation to source_data")
             matrix, offset = self._affine_transform[entry].inverse().matrix_form()
             aligned_data = interpolation.affine_transform(
-                self._source_data[entry].T,
-                matrix,
-                offset=offset,
+                self._source_data[entry],
+                matrix.T,
+                offset=offset[::-1],
                 order=self.interp_order,
-                output_shape=self._output_shape[entry][::-1],
+                output_shape=self._output_shape[entry],
                 cval=self.cval,
-            ).T
+            )
             if self._source_mask[entry] is not None:
                 aligned_mask = interpolation.affine_transform(
-                    self._source_mask[entry].T,
-                    matrix,
-                    offset=offset,
+                    self._source_mask[entry],
+                    matrix.T,
+                    offset=offset[::-1],
                     order=0,
-                    output_shape=self._output_shape[entry][::-1],
+                    output_shape=self._output_shape[entry],
                     cval=self.cval_mask,
-                ).T
+                )
 
         return aligned_data, aligned_mask
 
@@ -784,8 +866,8 @@ class Spalipy:
 
     def _sub_tile_mask(self, coo, shape, edge_buffer):
         """Return a generator of masks describing membership of sub-tiles"""
-        width = shape[0]
-        height = shape[1]
+        width = shape[1]
+        height = shape[0]
         if edge_buffer > 0:
             edge_mask = (
                 (coo[:, 0] >= edge_buffer)
@@ -1328,6 +1410,18 @@ def main(args=None):
         "cross-matching. If omitted defaults to `2 * max_match_dist`.",
     )
     parser.add_argument(
+        "--preserve-footprints",
+        action="store_true",
+        help="If set, the full footprints of all images will be "
+        "preserved, including non-overlapping rehions. This translates the "
+        "pixel coordinate system of the template data (and detections) "
+        "meaning objects will not be at the same position in the output "
+        "as they were in the input. This will affect the size of the "
+        "output template and source data, as well as overrulling any "
+        "`output_shape` argument provided.",
+    )
+
+    parser.add_argument(
         "--cval",
         type=float,
         default=0,
@@ -1405,6 +1499,17 @@ def main_simple(args=None):
         default=5,
         help="The threshold value to pass to `sep.extract()`.",
     )
+    parser.add_argument(
+        "--preserve-footprints",
+        action="store_true",
+        help="If set, the full footprints of all images will be "
+        "preserved, including non-overlapping rehions. This translates the "
+        "pixel coordinate system of the template data (and detections) "
+        "meaning objects will not be at the same position in the output "
+        "as they were in the input. This will affect the size of the "
+        "output template and source data.",
+    )
+
     parser.add_argument(
         "--overwrite",
         action="store_true",

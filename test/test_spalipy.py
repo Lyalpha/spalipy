@@ -110,16 +110,24 @@ def generate_mask(bits=4, num_masked=500, seed=0):
 
 
 class TestSpalipy(unittest.TestCase):
-    def setUp(self):
-        self.template_data = generate_image()
-        self.source_data = generate_image(translate=(20, -20), rotate=60, scale=1.2, seed=1)
-        self.source_mask = generate_mask()
-        self.source_mask[100:105, 330:335] = 16
+    @classmethod
+    def setUpClass(cls):
+        cls.template_data = generate_image()
+        cls.source_data = generate_image(translate=(20, -20), rotate=60, scale=1.2, seed=1)
+        cls.source_data_footprint = generate_image(
+            translate=(3.4, -12.5), rotate=49.2, scale=1.0, seed=1
+        )
+        source_mask = generate_mask()
+        source_mask[100:105, 330:335] = 16
+        cls.source_mask = source_mask
 
-        self.expected_affine_transform_simple = np.array(
+        cls.expected_affine_transform_simple = np.array(
             [0.41713655, -0.72205574, -26.36528175, 281.10807233]
         )
-        self.expected_affine_transform_quad_edge_buffer = np.array([])
+        cls.expected_affine_transform_footprint = np.array(
+            [0.65375097, -0.7569395, -0.35889457, 301.85752249]
+        )
+        cls.expected_affine_transform_quad_edge_buffer = np.array([])
 
     def test_simple_align(self):
         """Test simple alignment produces expected affine transformation."""
@@ -202,6 +210,18 @@ class TestSpalipy(unittest.TestCase):
             quad_edge_buffer=100,
         )
         sp.align()
-        assert len(sp.source_quadlist[0]) == 424
+        assert len(sp.source_quadlist[0]) == 486
         assert len(sp.template_quadlist[0]) == 2
         assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple)
+
+    def test_preserve_footprints(self):
+        sp = Spalipy(
+            self.source_data_footprint,
+            template_data=self.template_data,
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=0,
+            preserve_footprints=True,
+        )
+        sp.align()
+        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_footprint)
