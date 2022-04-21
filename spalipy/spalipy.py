@@ -741,22 +741,25 @@ class Spalipy:
             anchor_width = -min(0, min_width)
             anchor_height = -min(0, min_height)
 
-            # Pad the template image to the size required
-            template_height, template_width = self.template_data.shape
-            pad_widths = [
-                anchor_height,
-                max(max_height, template_height) - template_height,
-                anchor_width,
-                max(max_width, template_width) - template_width,
-            ]
-            self.template_data = np.pad(
-                self.template_data,
-                ((pad_widths[0], pad_widths[1]), (pad_widths[2], pad_widths[3])),
-                "constant",
-                constant_values=self.cval,
-            )
+            # Pad the template image to the size required if supplied
+            if self.template_data is not None:
+                template_height, template_width = self.template_data.shape
+                pad_widths = [
+                    anchor_height,
+                    max(max_height, template_height) - template_height,
+                    anchor_width,
+                    max(max_width, template_width) - template_width,
+                ]
+                self.template_data = np.pad(
+                    self.template_data,
+                    ((pad_widths[0], pad_widths[1]), (pad_widths[2], pad_widths[3])),
+                    "constant",
+                    constant_values=self.cval,
+                )
             # Overrule any output shapes that have been set
-            self._output_shape = [self.template_data.shape] * len(self._source_data)
+            self._output_shape = [(max_height - min_height, max_width - min_width)] * len(
+                self._source_data
+            )
             # Update offsets for all source affine transforms to match new, padded pixel coordinates
             for i in range(len(self._source_data)):
                 if self._alignment_failed[i]:

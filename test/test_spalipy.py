@@ -18,6 +18,7 @@ import unittest
 
 import numpy as np
 from astropy.modeling import models
+from astropy.table import Table
 
 from spalipy import Spalipy
 
@@ -25,7 +26,7 @@ SHAPE = (380, 400)  # size of images used for testing
 BUFFER = 50  # buffer for creating sources outside shape, to allow for transformations
 
 
-def generate_image(translate=(0, 0), rotate=0.0, scale=1.0, num_sources=180, seed=0):
+def generate_image(translate=(0, 0), rotate=0.0, scale=1.0, num_dets=180, seed=0):
     """Create an array of a simulated astronomical image."""
     rng = np.random.default_rng(seed)
     # Define a fixed seed rng - source positions and relative fluxes must make sense
@@ -41,17 +42,17 @@ def generate_image(translate=(0, 0), rotate=0.0, scale=1.0, num_sources=180, see
     # Define parameters for gaussian sources
     amplitude_low = poisson_mean + 100 * gauss_sigma
     amplitude_high = poisson_mean + 200 * gauss_sigma
-    amplitude = rng_source.uniform(low=amplitude_low, high=amplitude_high, size=num_sources)
+    amplitude = rng_source.uniform(low=amplitude_low, high=amplitude_high, size=num_dets)
 
-    x_mean = rng_source.uniform(-BUFFER, SHAPE[0] + BUFFER, size=num_sources)
-    y_mean = rng_source.uniform(-BUFFER, SHAPE[1] + BUFFER, size=num_sources)
+    x_mean = rng_source.uniform(-BUFFER, SHAPE[0] + BUFFER, size=num_dets)
+    y_mean = rng_source.uniform(-BUFFER, SHAPE[1] + BUFFER, size=num_dets)
 
     stddev_low = 2
     stddev_scale = 0.1
-    x_stddev = (rng_source.rayleigh(scale=stddev_scale, size=num_sources) + stddev_low) * scale
-    y_stddev = (rng_source.rayleigh(scale=stddev_scale, size=num_sources) + stddev_low) * scale
+    x_stddev = (rng_source.rayleigh(scale=stddev_scale, size=num_dets) + stddev_low) * scale
+    y_stddev = (rng_source.rayleigh(scale=stddev_scale, size=num_dets) + stddev_low) * scale
 
-    theta = np.radians(rng_source.uniform(low=0, high=360, size=num_sources))
+    theta = np.radians(rng_source.uniform(low=0, high=360, size=num_dets))
 
     # Construct models gaussian sources, accounting for translation, rotation and scale
     if translate != (0, 0) or rotate != 0 or scale != 1:
@@ -70,26 +71,30 @@ def generate_image(translate=(0, 0), rotate=0.0, scale=1.0, num_sources=180, see
         x_mean = new_xy[:, 0] + x_mid
         y_mean = new_xy[:, 1] + y_mid
 
-    source_models = models.Gaussian2D(
+    det_models = models.Gaussian2D(
         amplitude=amplitude,
         x_mean=x_mean,
         y_mean=y_mean,
         x_stddev=x_stddev,
         y_stddev=y_stddev,
         theta=theta,
-        n_models=num_sources,
+        n_models=num_dets,
     )
 
     # Generate and image of the sources
     xrange = np.arange(SHAPE[1])
     yrange = np.arange(SHAPE[0])
     x, y = np.meshgrid(xrange, yrange)
-    x = np.repeat(x[:, :, np.newaxis], num_sources, axis=2)
-    y = np.repeat(y[:, :, np.newaxis], num_sources, axis=2)
-    source_signal = source_models(x, y, model_set_axis=2).sum(axis=2)
+    x = np.repeat(x[:, :, np.newaxis], num_dets, axis=2)
+    y = np.repeat(y[:, :, np.newaxis], num_dets, axis=2)
+    det_signal = det_models(x, y, model_set_axis=2).sum(axis=2)
 
-    # Create and return the final noise + signal image
-    return poisson_noise + gaussian_noise + source_signal
+    det_table = Table(
+        dict(x=x_mean, y=y_mean, flux=amplitude, fwhm=x_stddev * 2.355, flag=[0] * num_dets)
+    )
+
+    # Create and return the final noise + signal image and a table of detections
+    return poisson_noise + gaussian_noise + det_signal, det_table
 
 
 def generate_mask(bits=4, num_masked=500, seed=0):
@@ -112,9 +117,11 @@ def generate_mask(bits=4, num_masked=500, seed=0):
 class TestSpalipy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template_data = generate_image()
-        cls.source_data = generate_image(translate=(20, -20), rotate=60, scale=1.2, seed=1)
-        cls.source_data_footprint = generate_image(
+        cls.template_data, cls.template_dets = generate_image()
+        cls.source_data, cls.source_dets = generate_image(
+            translate=(20, -20), rotate=60, scale=1.2, seed=1
+        )
+        cls.source_data_footprint, cls.source_dets_footprint = generate_image(
             translate=(3.4, -12.5), rotate=49.2, scale=1.0, seed=1
         )
         source_mask = generate_mask()
@@ -128,6 +135,8 @@ class TestSpalipy(unittest.TestCase):
             [0.65375097, -0.7569395, -0.35889457, 301.85752249]
         )
         cls.expected_affine_transform_quad_edge_buffer = np.array([])
+
+        cls.expected_footprint_shape = (549, 547)
 
     def test_simple_align(self):
         """Test simple alignment produces expected affine transformation."""
@@ -225,3 +234,19 @@ class TestSpalipy(unittest.TestCase):
         )
         sp.align()
         assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_footprint)
+        assert sp.template_data.shape == self.expected_footprint_shape
+        assert sp.aligned_data.shape == self.expected_footprint_shape
+        # Should also work when not providing template data (here use the detections
+        # found in the previous run rather than the ground-truth model positions in order
+        # that the exact same transformation and footprint is produced)
+        sp = Spalipy(
+            self.source_data_footprint,
+            template_det=sp.template_det,
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=0,
+            preserve_footprints=True,
+        )
+        sp.align()
+        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_footprint)
+        assert sp.aligned_data.shape == self.expected_footprint_shape
