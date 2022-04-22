@@ -51,6 +51,16 @@ class AffineTransform:
     def __init__(self, v):
         self.v = np.asarray(v)
 
+    @property
+    def scale(self):
+        """Return x-axis scale factor of transform"""
+        return np.sqrt(self.v[0] * self.v[0] + self.v[1] * self.v[1])
+
+    @property
+    def rotation(self):
+        """Return rotation of transform in degrees"""
+        return np.deg2rad(np.arctan2(self.v[1], self.v[0]))
+
     def inverse(self):
         """Returns the inverse transform"""
 
@@ -591,6 +601,9 @@ class Spalipy:
         source_match_coo = self._get_det_coords(source_det_matched)
         template_match_coo = self._get_det_coords(template_det_matched)
         affine_transform = calc_affine_transform(source_match_coo, template_match_coo)
+        logging.info(
+            f"Found scale = {affine_transform.scale:.4f}, rotation = {affine_transform.rotation:.4f} degrees"
+        )
 
         return source_det_matched, template_det_matched, affine_transform
 
