@@ -117,7 +117,7 @@ def generate_mask(bits=4, num_masked=500, seed=0):
 class TestSpalipy(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.template_data, cls.template_dets = generate_image()
+        cls.template_data, cls.template_dets = generate_image(seed=0)
         cls.source_data, cls.source_dets = generate_image(
             translate=(20, -20), rotate=60, scale=1.2, seed=1
         )
@@ -236,17 +236,13 @@ class TestSpalipy(unittest.TestCase):
         assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_footprint)
         assert sp.template_data.shape == self.expected_footprint_shape
         assert sp.aligned_data.shape == self.expected_footprint_shape
-        # Should also work when not providing template data (here use the detections
-        # found in the previous run rather than the ground-truth model positions in order
-        # that the exact same transformation and footprint is produced)
-        sp = Spalipy(
-            self.source_data_footprint,
-            template_det=sp.template_det,
-            min_n_match=10,
-            sub_tile=1,
-            spline_order=0,
-            preserve_footprints=True,
-        )
-        sp.align()
-        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_footprint)
-        assert sp.aligned_data.shape == self.expected_footprint_shape
+        # preserve_footprints should raise error when not providing template data
+        with self.assertRaises(ValueError):
+            sp = Spalipy(
+                self.source_data_footprint,
+                template_det=sp.template_det,
+                min_n_match=10,
+                sub_tile=1,
+                spline_order=0,
+                preserve_footprints=True,
+            )

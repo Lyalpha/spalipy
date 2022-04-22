@@ -196,7 +196,8 @@ class Spalipy:
         meaning objects will not be at the same position in the output
         as they were in the input. This will affect the size of the
         output template and source data, as well as overrulling any
-        `output_shape` argument provided.
+        `output_shape` argument provided. `template_data` must be provided
+        if using this option.
     cval : float, optional
         The value used to fill regions of the aligned data where
         there is no overlap with template image.
@@ -318,6 +319,8 @@ class Spalipy:
                 raise ValueError("One of template_data or template_det must be provided")
             if template_data is not None and template_data.ndim != 2:
                 raise ValueError(f"The dimensionality of template_data is not 2")
+            if preserve_footprints and template_data is None:
+                raise ValueError("preserve_footprints=True requires template_data to be provided")
 
         self._source_data = source_data
         self._source_mask = source_mask
@@ -1442,7 +1445,8 @@ def main(args=None):
         "meaning objects will not be at the same position in the output "
         "as they were in the input. This will affect the size of the "
         "output template and source data, as well as overrulling any "
-        "`output_shape` argument provided.",
+        "`output_shape` argument provided. `template_data` must be provided "
+        "if using this option.",
     )
 
     parser.add_argument(
