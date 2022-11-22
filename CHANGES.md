@@ -4,11 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2022-11
+ - Data of an unsuable format by sep (e.g. int) is now cast to float64 by default.
+
 ## [3.2.2] - 2022-04
  - Reverted ability to use `preserve_footprints` without providing `template_data` owing
    to issues in correctly shaping the output data. In practice this pair of arguments 
    would always be used together. A `ValueError` is now raised.
- - The scale and rotation of the overall affine transform is now logged
+ - The scale and rotation of the overall affine transform is now logged.
 
 ## [3.2.1] - 2022-04
  - Fix bug when using `preserve_footprints` without providing template data.
