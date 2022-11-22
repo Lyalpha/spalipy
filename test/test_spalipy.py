@@ -94,7 +94,8 @@ def generate_image(translate=(0, 0), rotate=0.0, scale=1.0, num_dets=180, seed=0
     )
 
     # Create and return the final noise + signal image and a table of detections
-    return poisson_noise + gaussian_noise + det_signal, det_table
+    data = poisson_noise + gaussian_noise + det_signal
+    return data, det_table
 
 
 def generate_mask(bits=4, num_masked=500, seed=0):
@@ -246,3 +247,15 @@ class TestSpalipy(unittest.TestCase):
                 spline_order=0,
                 preserve_footprints=True,
             )
+
+    def test_convert_integer_to_float(self):
+        sp = Spalipy(
+            self.source_data.astype(np.int16),
+            template_data=self.template_data.astype(np.int16),
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=0,
+        )
+        sp.align()
+        assert sp.aligned_data.shape == SHAPE
+        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple, atol=1e-3)

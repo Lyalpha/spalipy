@@ -32,8 +32,8 @@ from scipy.spatial import cKDTree, distance
 # expose dfitpack errors so we can catch them later
 try:
     interpolate.dfitpack.sproot(-1, -1, -1)
-except Exception as e:
-    dfitpackError = type(e)
+except Exception as _e:
+    dfitpackError = type(_e)
 
 
 class AffineTransform:
@@ -708,7 +708,7 @@ class Spalipy:
 
     def full_transform(self, coo, entry, inverse=True):
         """Return transformed coordinates including both affine and spline transforms"""
-        # Need to correct the spline coorinates used for any anchoring (padding) done to the
+        # Need to correct the spline coordinates used for any anchoring (padding) done to the
         # coordinate system when preserving footprints.
         spline_coo_offset = np.array([self._anchor_height, self._anchor_width]).reshape(2, 1, 1)
         if inverse:
@@ -927,12 +927,26 @@ class Spalipy:
     def _extract_detections(self, data):
         """Return an astropy Table of detections found in input data"""
 
-        try:
-            bkg = sep.Background(data)
-        except ValueError:
-            # See https://sep.readthedocs.io/en/latest/tutorial.html#Finally-a-brief-word-on-byte-order
-            data = data.byteswap(inplace=True).newbyteorder()
-            bkg = sep.Background(data)
+        def get_background(_data):
+            try:
+                _bkg = sep.Background(_data)
+            except ValueError as e:
+                # See https://sep.readthedocs.io/en/latest/tutorial.html#Finally-a-brief-word-on-byte-order
+                if "has non-native byte order" in str(e):
+                    _data = _data.byteswap(inplace=True).newbyteorder()
+                elif "input array dtype not supported" in str(e):
+                    logging.warning(f"Converting data from dtype {_data.dtype} to float64")
+                    _data = _data.astype(np.float64)
+                _bkg = sep.Background(_data)
+            return _bkg
+
+        # Try twice to get the background to allow once for non-native byte order, and once for wrong dtype
+        for i in range(2):
+            bkg = get_background(data)
+            break
+        else:
+            raise RuntimeError("Failed to get background")
+
         bkg_rms = bkg.rms()
         data_sub = data - bkg.back()
 
@@ -1042,7 +1056,7 @@ class Spalipy:
             source_coo_trans, k=2, distance_upper_bound=2 * self.max_match_dist
         )
         # For a match, we require the match distance to be within our limit, and
-        # that the second nearest object is at least double that distance. This is
+        # that the second-nearest object is at least double that distance. This is
         # a crude method to alleviate double matches, maybe caused by aggressive
         # segmentation in the source catalogues.
         source_matched_mask = (dists[:, 0] < self.max_match_dist) & np.isinf(dists[:, 1])
