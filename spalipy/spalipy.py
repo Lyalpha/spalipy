@@ -29,6 +29,8 @@ from scipy import linalg, interpolate
 from scipy.ndimage import interpolation, map_coordinates
 from scipy.spatial import cKDTree, distance
 
+from spalipy.utils import _c_array_prep
+
 # expose dfitpack errors so we can catch them later
 try:
     interpolate.dfitpack.sproot(-1, -1, -1)
@@ -944,26 +946,8 @@ class Spalipy:
 
     def _extract_detections(self, data):
         """Return an astropy Table of detections found in input data"""
-
-        def get_background(_data):
-            try:
-                _bkg = sep.Background(_data)
-            except ValueError as e:
-                # See https://sep.readthedocs.io/en/latest/tutorial.html#Finally-a-brief-word-on-byte-order
-                if "has non-native byte order" in str(e):
-                    _data = _data.byteswap(inplace=True).newbyteorder()
-                elif "input array dtype not supported" in str(e):
-                    logging.warning(f"Converting data from dtype {_data.dtype} to float64")
-                    _data = _data.astype(np.float64)
-                _bkg = sep.Background(_data)
-            return _bkg
-
-        # Try twice to get the background to allow once for non-native byte order, and once for wrong dtype
-        for i in range(2):
-            bkg = get_background(data)
-            break
-        else:
-            raise RuntimeError("Failed to get background")
+        data = _c_array_prep(data)
+        bkg = sep.Background(data)
 
         bkg_rms = bkg.rms()
         data_sub = data - bkg.back()
