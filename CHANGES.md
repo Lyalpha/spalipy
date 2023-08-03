@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2023-08
+ - Both source and template data are now always converted to float64 if not in that format
+   this can be done in place by passing `copy=False` to the main constructor.
+
 ## [3.3.0] - 2022-11
  - Data of an unsuable format by sep (e.g. int) is now cast to float64 by default.
 
