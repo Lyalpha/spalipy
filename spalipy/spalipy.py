@@ -208,6 +208,10 @@ class Spalipy:
         Whether to skip some basic checking of input arguments for
         minor speed up when setting-up. Useful when inputs are fixed
         and already known.
+    copy : boolean
+        Source and Template data is converted to float64 internally,
+        if true, a copy of the input data is made to avoid modifying
+        the original, otherwise the input data is modified in-place.
     """
 
     x_col = "x"
@@ -245,6 +249,7 @@ class Spalipy:
         cval: float = 0,
         cval_mask: float = 0,
         skip_checking: bool = False,
+        copy: bool = True,
     ):
 
         self.n_det = n_det
@@ -272,6 +277,7 @@ class Spalipy:
             self._source_inputs_as_list = False
         else:
             self._source_inputs_as_list = True
+
         self._n_source_entry = len(source_data)
         if source_mask is None or isinstance(source_mask, np.ndarray):
             source_mask = [source_mask] * self._n_source_entry
@@ -321,6 +327,18 @@ class Spalipy:
                 raise ValueError(f"The dimensionality of template_data is not 2")
             if preserve_footprints and template_data is None:
                 raise ValueError("preserve_footprints=True requires template_data to be provided")
+
+        for i, arr in enumerate(source_data):
+            if arr.dtype != np.float64:
+                if copy:
+                    source_data[i] = arr.astype(np.float64)
+                else:
+                    arr.astype(np.float64, copy=False)
+        if template_data is not None and template_data.dtype != np.float64:
+            if copy:
+                template_data = template_data.astype(np.float64)
+            else:
+                template_data.astype(np.float64, copy=False)
 
         self._source_data = source_data
         self._source_mask = source_mask
@@ -1228,7 +1246,8 @@ def _console_align(args_dict):
     args_dict.pop("verbose", None)
 
     logging.info("Initialising Spalipy instance")
-    s = Spalipy(**args_dict)
+    # Always use copy=False since we're reading/writing to files anyway
+    s = Spalipy(**args_dict, copy=False)
     s.align()
     s.log_transform_stats()
 
