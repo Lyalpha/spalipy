@@ -860,7 +860,7 @@ class Spalipy:
                 # retrieve results into a list of aligned data,mask tuples
                 worker_results = [(None, None) if worker is None else (worker.result()) for worker in workers]
                 # extract the tuples to separate lists
-                aligned_data, aligned_mask = zip(*worker_results)
+                aligned_data, aligned_mask = map(list, zip(*worker_results))
         else:
             # no multi-thread
             for i in range(len(self._source_data)):
