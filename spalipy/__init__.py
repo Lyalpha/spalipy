@@ -16,4 +16,4 @@
 
 from .spalipy import Spalipy
 
-__version__ = "3.4.1-mmapdev"
+__version__ = "3.4.1"
