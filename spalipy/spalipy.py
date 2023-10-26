@@ -217,9 +217,11 @@ class Spalipy:
         the original, otherwise the input data is modified in-place.
     use_memmap : boolean, optional (default=False)
         If source data are np.memmap ndarrays, attempt to free memory
-        after reading. Also, create output np.ndarrays as np.memmap
-        temporary files. See `tempfile` documentation for default temp
-        directory search configurations.
+        after reading. NB: this will clear any array changes that have not
+        been flushed to disk!
+        Additionally, create output np.ndarrays as np.memmap temporary files.
+        See `tempfile` documentation for default temp directory search
+        configurations.
     thread_pool_max : int, optional (default=None)
         If >1, submit `thread_pool_max` worker threads to process image
         transform alignments to template. Else do not multi-thread.

@@ -16,4 +16,4 @@
 
 from .spalipy import Spalipy
 
-__version__ = "3.4.1"
+__version__ = "3.5.0"
