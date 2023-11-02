@@ -18,6 +18,7 @@ import argparse
 import itertools
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import Optional, Union
 
@@ -29,7 +30,7 @@ from scipy import linalg, interpolate
 from scipy.ndimage import interpolation, map_coordinates
 from scipy.spatial import cKDTree, distance
 
-from spalipy.utils import _c_array_prep
+from spalipy.utils import _c_array_prep, _memmap_tryfree, _memmap_create_temp
 
 # expose dfitpack errors so we can catch them later
 try:
@@ -214,6 +215,16 @@ class Spalipy:
         Source and Template data is converted to float64 internally,
         if true, a copy of the input data is made to avoid modifying
         the original, otherwise the input data is modified in-place.
+    use_memmap : boolean, optional (default=False)
+        If source data are np.memmap ndarrays, attempt to free memory
+        after reading. NB: this will clear any array changes that have not
+        been flushed to disk!
+        Additionally, create output np.ndarrays as np.memmap temporary files.
+        See `tempfile` documentation for default temp directory search
+        configurations.
+    thread_pool_max : int, optional (default=None)
+        If >1, submit `thread_pool_max` worker threads to process image
+        transform alignments to template. Else do not multi-thread.
     """
 
     x_col = "x"
@@ -252,6 +263,8 @@ class Spalipy:
         cval_mask: float = 0,
         skip_checking: bool = False,
         copy: bool = True,
+        use_memmap: bool = False,
+        thread_pool_max: Union[int, None] = None
     ):
 
         self.n_det = n_det
@@ -273,6 +286,12 @@ class Spalipy:
         self.preserve_footprints = preserve_footprints
         self.cval = cval
         self.cval_mask = cval_mask
+
+        self.use_memmap = True if use_memmap is True else False
+        if isinstance(thread_pool_max, int) and thread_pool_max > 1:
+            self.thread_pool_max = thread_pool_max
+        else:
+            self.thread_pool_max = None
 
         if isinstance(source_data, np.ndarray):
             source_data = [source_data]
@@ -358,6 +377,8 @@ class Spalipy:
             self._source_coo.append(coo)
             shape = _output_shape or _source_data.shape
             self._output_shape.append(shape)
+            if self.use_memmap:
+                _memmap_tryfree(_source_data)
 
         logging.info(f"Processing template")
         self.template_data = template_data
@@ -366,6 +387,8 @@ class Spalipy:
         self.template_det = template_det
         self.template_coo = self._get_det_coords(self.template_det)
         self.template_coo_tree = cKDTree(self.template_coo)
+        if self.use_memmap:
+            _memmap_tryfree(template_data)
 
         self._source_quadlist = None
         self.template_quadlist = None
@@ -821,15 +844,36 @@ class Spalipy:
             self._corrected_footprints = True
             self._anchor_width = anchor_width
             self._anchor_height = anchor_height
-        for i in range(len(self._source_data)):
-            if self._alignment_failed[i]:
-                logging.info(f"Skipping transform for entry {i} due to failed alignment")
-                _aligned_data, _aligned_mask = None, None
-            else:
-                logging.info(f"Aligning source data entry {i}")
-                _aligned_data, _aligned_mask = self._transform_data(i)
-            aligned_data.append(_aligned_data)
-            aligned_mask.append(_aligned_mask)
+
+        if self.thread_pool_max:
+            # multi-thread
+            workers = []
+            with ThreadPoolExecutor(max_workers=self.thread_pool_max) as executor:
+                # submit all transforms to queue
+                for i in range(len(self._source_data)):
+                    if self._alignment_failed[i]:
+                        logging.info(f"Skipping transform for entry {i} due to failed alignment")
+                        workers.append(None)
+                    else:
+                        logging.info(f"Submitting threaded alignment of source data entry {i}")
+                        workers.append(
+                            executor.submit(self._transform_data, i)
+                        )
+                # retrieve results into a list of aligned data,mask tuples
+                worker_results = [(None, None) if worker is None else (worker.result()) for worker in workers]
+                # extract the tuples to separate lists
+                aligned_data, aligned_mask = map(list, zip(*worker_results))
+        else:
+            # no multi-thread
+            for i in range(len(self._source_data)):
+                if self._alignment_failed[i]:
+                    logging.info(f"Skipping transform for entry {i} due to failed alignment")
+                    _aligned_data, _aligned_mask = None, None
+                else:
+                    logging.info(f"Aligning source data entry {i}")
+                    _aligned_data, _aligned_mask = self._transform_data(i)
+                aligned_data.append(_aligned_data)
+                aligned_mask.append(_aligned_mask)
 
         self._aligned_data = aligned_data
         self._aligned_mask = aligned_mask
@@ -849,13 +893,19 @@ class Spalipy:
             xx, yy = np.meshgrid(
                 np.arange(self._output_shape[entry][0]), np.arange(self._output_shape[entry][1])
             )
-            full_transform_coords_shift = self.full_transform(np.array([yy, xx]), entry)
+            yyxx = np.array([yy,xx])  # curtail memory peak with yyxx
+            del xx, yy
+            full_transform_coords_shift = self.full_transform(yyxx, entry)
+            del yyxx
             aligned_data = map_coordinates(
                 self._source_data[entry].T,
                 full_transform_coords_shift,
                 order=self.interp_order,
                 cval=self.cval,
             ).T
+            if self.use_memmap:
+                _memmap_tryfree(self._source_data[entry])
+                aligned_data = _memmap_create_temp(aligned_data)
             if self._source_mask[entry] is not None:
                 aligned_mask = map_coordinates(
                     self._source_mask[entry].T,
@@ -863,6 +913,9 @@ class Spalipy:
                     order=0,
                     cval=self.cval_mask,
                 ).T
+                if self.use_memmap:
+                    _memmap_tryfree(self._source_mask[entry])
+                    aligned_mask = _memmap_create_temp(aligned_mask)
         else:
             logging.info("Applying affine transformation to source_data")
             matrix, offset = self._affine_transform[entry].inverse().matrix_form()
@@ -874,6 +927,9 @@ class Spalipy:
                 output_shape=self._output_shape[entry],
                 cval=self.cval,
             )
+            if self.use_memmap:
+                _memmap_tryfree(self._source_data[entry])
+                aligned_data = _memmap_create_temp(aligned_data)
             if self._source_mask[entry] is not None:
                 aligned_mask = interpolation.affine_transform(
                     self._source_mask[entry],
@@ -883,6 +939,9 @@ class Spalipy:
                     output_shape=self._output_shape[entry],
                     cval=self.cval_mask,
                 )
+                if self.use_memmap:
+                    _memmap_tryfree(self._source_mask[entry])
+                    aligned_mask = _memmap_create_temp(aligned_mask)
 
         return aligned_data, aligned_mask
 

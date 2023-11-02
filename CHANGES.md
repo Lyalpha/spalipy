@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2023-10
+ - Add optional `use_memmap` and `thread_pool_max` arguments (disabled by default).
+   - `use_memmap`: if sources and templates are `np.memmap`, attempt to free paged memory
+   after reading **(WARNING, un-flushed data changes in memory will be lost)**, and create
+   output arrays as `np.memmap` temporary files (see `tempfile` manual for temp dir location).
+   - `thread_pool_max`: enable multi-thread logic in `Spalipy.transform_data()`.
+
 ## [3.4.0] - 2023-08
  - Both source and template data are now always converted to float64 if not in that format
    this can be done in place by passing `copy=False` to the main constructor.
