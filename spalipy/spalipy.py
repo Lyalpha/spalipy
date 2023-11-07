@@ -1,5 +1,4 @@
-# spalipy - Detection-based astrononmical image registration
-# Copyright (C) 2018-2021  Joe Lyman
+# spalipy - Detection-based astronomical image registration
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -214,7 +213,7 @@ class Spalipy:
     copy : boolean
         Source and Template data is converted to float64 internally,
         if true, a copy of the input data is made to avoid modifying
-        the original, otherwise the input data is modified in-place.
+        the original, otherwise the input data is modified in-place if possible.
     use_memmap : boolean, optional (default=False)
         If source data are np.memmap ndarrays, attempt to free memory
         after reading. NB: this will clear any array changes that have not
@@ -224,7 +223,7 @@ class Spalipy:
         configurations.
     thread_pool_max : int, optional (default=None)
         If >1, submit `thread_pool_max` worker threads to process image
-        transform alignments to template. Else do not multi-thread.
+        transform alignments to template, otherwise do not multi-thread.
     """
 
     x_col = "x"
@@ -264,9 +263,8 @@ class Spalipy:
         skip_checking: bool = False,
         copy: bool = True,
         use_memmap: bool = False,
-        thread_pool_max: Union[int, None] = None
+        thread_pool_max: Optional[int] = None,
     ):
-
         self.n_det = n_det
         self.n_quad_det = n_quad_det
         self.min_quad_sep = min_quad_sep
@@ -286,8 +284,7 @@ class Spalipy:
         self.preserve_footprints = preserve_footprints
         self.cval = cval
         self.cval_mask = cval_mask
-
-        self.use_memmap = True if use_memmap is True else False
+        self.use_memmap = use_memmap
         if isinstance(thread_pool_max, int) and thread_pool_max > 1:
             self.thread_pool_max = thread_pool_max
         else:
@@ -345,21 +342,15 @@ class Spalipy:
             if template_data is None and template_det is None:
                 raise ValueError("One of template_data or template_det must be provided")
             if template_data is not None and template_data.ndim != 2:
-                raise ValueError(f"The dimensionality of template_data is not 2")
+                raise ValueError("The dimensionality of template_data is not 2")
             if preserve_footprints and template_data is None:
                 raise ValueError("preserve_footprints=True requires template_data to be provided")
 
         for i, arr in enumerate(source_data):
             if arr.dtype != np.float64:
-                if copy:
-                    source_data[i] = arr.astype(np.float64)
-                else:
-                    arr.astype(np.float64, copy=False)
+                source_data[i] = arr.astype(np.float64, copy=copy)
         if template_data is not None and template_data.dtype != np.float64:
-            if copy:
-                template_data = template_data.astype(np.float64)
-            else:
-                template_data.astype(np.float64, copy=False)
+            template_data = template_data.astype(np.float64, copy=copy)
 
         self._source_data = source_data
         self._source_mask = source_mask
@@ -380,7 +371,7 @@ class Spalipy:
             if self.use_memmap:
                 _memmap_tryfree(_source_data)
 
-        logging.info(f"Processing template")
+        logging.info("Processing template")
         self.template_data = template_data
         template_det = template_det or self._extract_detections(template_data)
         template_det = self._prep_detection_table(template_det)
@@ -563,7 +554,8 @@ class Spalipy:
             best = np.argsort(min_dist)
             if not np.any(min_dist < self.max_quad_hash_dist):
                 logging.warning(
-                    f"No matching quads found below minimum quad hash distance of {self.max_quad_hash_dist}"
+                    "No matching quads found below minimum quad hash "
+                    f"distance of {self.max_quad_hash_dist}"
                 )
                 continue
 
@@ -600,12 +592,13 @@ class Spalipy:
                             source_match_coo, template_match_coo
                         )
                         n_match, _source_det_matched, _template_det_matched = self._match_dets(
-                            source_det, initial_affine_transform
+                            source_det, _affine_transform
                         )
 
                         if n_match > best_n_match:
                             logging.info(
-                                f"Found new best number of matched detections ({n_match}) - updating transform"
+                                f"Found new best number of matched detections ({n_match})"
+                                " - updating transform"
                             )
                             source_det_matched = _source_det_matched
                             template_det_matched = _template_det_matched
@@ -648,7 +641,8 @@ class Spalipy:
         template_match_coo = self._get_det_coords(template_det_matched)
         affine_transform = calc_affine_transform(source_match_coo, template_match_coo)
         logging.info(
-            f"Found scale = {affine_transform.scale:.4f}, rotation = {affine_transform.rotation:.4f} degrees"
+            f"Found scale = {affine_transform.scale:.4f}, rotation "
+            f"= {affine_transform.rotation:.4f} degrees"
         )
 
         return source_det_matched, template_det_matched, affine_transform
@@ -820,14 +814,16 @@ class Spalipy:
                 # Ensure template data size does not factor into output shape calculation
                 template_height = template_width = -np.inf
                 template_height_origin = template_width_origin = np.inf
-            # Overrule any output shapes that have been set based on the extemeties of the transformed
-            # corners or the template corners (if template data not supplied these do not factor in)
+            # Overrule any output shapes that have been set based on the extemeties of the
+            # transformed corners or the template corners (if template data not supplied
+            # these do not factor in)
             output_height = max(template_height, max_height) - min(
                 template_height_origin, min_height
             )
             output_width = max(template_width, max_width) - min(template_width_origin, min_width)
             self._output_shape = [(output_height, output_width)] * len(self._source_data)
-            # Update offsets for all source affine transforms to match new, padded pixel coordinates
+            # Update offsets for all source affine transforms to match new, padded
+            # pixel coordinates
             for i in range(len(self._source_data)):
                 if self._alignment_failed[i]:
                     continue
@@ -856,11 +852,11 @@ class Spalipy:
                         workers.append(None)
                     else:
                         logging.info(f"Submitting threaded alignment of source data entry {i}")
-                        workers.append(
-                            executor.submit(self._transform_data, i)
-                        )
+                        workers.append(executor.submit(self._transform_data, i))
                 # retrieve results into a list of aligned data,mask tuples
-                worker_results = [(None, None) if worker is None else (worker.result()) for worker in workers]
+                worker_results = [
+                    (None, None) if worker is None else (worker.result()) for worker in workers
+                ]
                 # extract the tuples to separate lists
                 aligned_data, aligned_mask = map(list, zip(*worker_results))
         else:
@@ -893,7 +889,7 @@ class Spalipy:
             xx, yy = np.meshgrid(
                 np.arange(self._output_shape[entry][0]), np.arange(self._output_shape[entry][1])
             )
-            yyxx = np.array([yy,xx])  # curtail memory peak with yyxx
+            yyxx = np.array([yy, xx])  # curtail memory peak with yyxx
             del xx, yy
             full_transform_coords_shift = self.full_transform(yyxx, entry)
             del yyxx
@@ -1011,7 +1007,11 @@ class Spalipy:
         bkg_rms = bkg.rms()
         data_sub = data - bkg.back()
 
-        extracted_det = sep.extract(data_sub, thresh=self.sep_thresh, err=bkg_rms,)
+        extracted_det = sep.extract(
+            data_sub,
+            thresh=self.sep_thresh,
+            err=bkg_rms,
+        )
         det = Table(extracted_det)
         det["fwhm"] = 2.0 * (np.log(2) * (det["a"] ** 2.0 + det["b"] ** 2.0)) ** 0.5
         logging.info(f"Initially extracted {len(det)} detections")
@@ -1202,7 +1202,7 @@ def quad(coo, dist):
     # that brings A and B to 00 11 :
     x = coo[1, 0] - coo[0, 0]
     y = coo[1, 1] - coo[0, 1]
-    b = (x - y) / (x ** 2 + y ** 2)
+    b = (x - y) / (x**2 + y**2)
     a = (1 / x) * (1 + b * y)
     c = b * coo[0, 1] - a * coo[0, 0]
     d = -(b * coo[0, 0] + a * coo[0, 1])
@@ -1332,11 +1332,15 @@ def main(args=None):
     )
 
     parser.add_argument(
-        "source_fits", type=str, help="Filename of the source fits image to transform.",
+        "source_fits",
+        type=str,
+        help="Filename of the source fits image to transform.",
     )
 
     parser.add_argument(
-        "output_filename", type=str, help="Filename to write the transformed source image to.",
+        "output_filename",
+        type=str,
+        help="Filename to write the transformed source image to.",
     )
 
     parser.add_argument(
@@ -1420,13 +1424,15 @@ def main(args=None):
         "--max-match-dist",
         type=float,
         default=3,
-        help="Minimum matching distance between coordinates after the initial transformation to be considered a match.",
+        help="Minimum matching distance between coordinates after the initial transformation "
+        "to be considered a match.",
     )
     parser.add_argument(
         "--min-n-match",
         type=int,
         default=100,
-        help="Minimum number of matched dets for the affine transformation(s) to be considered sucessful.",
+        help="Minimum number of matched dets for the affine transformation(s) to be considered "
+        "sucessful.",
     )
     parser.add_argument(
         "--sub-tile",
@@ -1495,7 +1501,10 @@ def main(args=None):
         help="The threshold value to pass to `sep.extract()`.",
     )
     parser.add_argument(
-        "--min-fwhm", type=float, default=1, help="The minimum value of fwhm for a valid source.",
+        "--min-fwhm",
+        type=float,
+        default=1,
+        help="The minimum value of fwhm for a valid source.",
     )
     parser.add_argument(
         "--bad-flag-bits",
@@ -1566,11 +1575,15 @@ def main_simple(args=None):
     )
 
     parser.add_argument(
-        "source_fits", type=str, help="Filename of the source fits image to transform.",
+        "source_fits",
+        type=str,
+        help="Filename of the source fits image to transform.",
     )
 
     parser.add_argument(
-        "output_filename", type=str, help="Filename to write the transformed source image to.",
+        "output_filename",
+        type=str,
+        help="Filename to write the transformed source image to.",
     )
     parser.add_argument(
         "template_fits",

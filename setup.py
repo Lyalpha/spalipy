@@ -1,5 +1,5 @@
 # spalipy - Detection-based astrononmical image registration
-# Copyright (C) 2018-2021  Joe Lyman
+# Copyright (C) 2018-2023  Joe Lyman
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
 
 import setuptools
 
-with open("README.md", "r") as fh:
+with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setuptools.setup(
@@ -36,9 +36,10 @@ setuptools.setup(
     },
     install_requires=["astropy>=3.2.2", "numpy>=1.10", "scipy>=1.1.0", "sep>=1.1.1"][::-1],
     classifiers=[
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: OS Independent",
         "Topic :: Scientific/Engineering :: Astronomy",

@@ -1,19 +1,4 @@
-# spalipy - Detection-based astrononmical image registration
-# Copyright (C) 2018-2021  Joe Lyman
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>
-
+import os
 import unittest
 
 import numpy as np
@@ -21,6 +6,7 @@ from astropy.modeling import models
 from astropy.table import Table
 
 from spalipy import Spalipy
+from spalipy.utils import _memmap_create_temp
 
 SHAPE = (380, 400)  # size of images used for testing
 BUFFER = 50  # buffer for creating sources outside shape, to allow for transformations
@@ -239,7 +225,7 @@ class TestSpalipy(unittest.TestCase):
         assert sp.aligned_data.shape == self.expected_footprint_shape
         # preserve_footprints should raise error when not providing template data
         with self.assertRaises(ValueError):
-            sp = Spalipy(
+            _ = Spalipy(
                 self.source_data_footprint,
                 template_det=sp.template_det,
                 min_n_match=10,
@@ -248,7 +234,7 @@ class TestSpalipy(unittest.TestCase):
                 preserve_footprints=True,
             )
 
-    def test_convert_integer_to_float(self):
+    def test_convert_integer_to_float64(self):
         sp = Spalipy(
             self.source_data.astype(np.int16),
             template_data=self.template_data.astype(np.int16),
@@ -256,6 +242,59 @@ class TestSpalipy(unittest.TestCase):
             sub_tile=1,
             spline_order=0,
         )
+        assert sp.source_data.dtype == np.float64
+        assert sp.template_data.dtype == np.float64
+
+    def test_convert_float32_to_float64(self):
+        sp = Spalipy(
+            self.source_data.astype(np.float32),
+            template_data=self.template_data.astype(np.float32),
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=0,
+        )
+        assert sp.source_data.dtype == np.float64
+        assert sp.template_data.dtype == np.float64
+
+    def test_memmap_create_temp(self):
+        data = np.random.random((100, 100))
+        memmap = _memmap_create_temp(data)
+        assert isinstance(memmap, np.memmap)
+        assert not os.path.exists(memmap.filename)  # file should be unlinked
+        assert np.array_equal(memmap, data)
+
+    def test_memmap_align(self):
+        source_memmap = _memmap_create_temp(self.source_data)
+        template_memmap = _memmap_create_temp(self.template_data)
+        sp = Spalipy(
+            source_memmap,
+            template_data=template_memmap,
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=0,
+            use_memmap=True,
+        )
         sp.align()
         assert sp.aligned_data.shape == SHAPE
-        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple, atol=1e-3)
+        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_simple)
+        assert isinstance(sp.template_data, np.memmap)
+        assert isinstance(sp.aligned_data, np.memmap)
+
+    def test_memmap_footprint_align(self):
+        source_memmap = _memmap_create_temp(self.source_data_footprint)
+        template_memmap = _memmap_create_temp(self.template_data)
+        sp = Spalipy(
+            source_memmap,
+            template_data=template_memmap,
+            min_n_match=10,
+            sub_tile=1,
+            spline_order=0,
+            preserve_footprints=True,
+            use_memmap=True,
+        )
+        sp.align()
+        assert np.allclose(sp.affine_transform.v, self.expected_affine_transform_footprint)
+        assert sp.template_data.shape == self.expected_footprint_shape
+        assert sp.aligned_data.shape == self.expected_footprint_shape
+        assert isinstance(sp.template_data, np.ndarray)  # np.pad ensures this becomes an array
+        assert isinstance(sp.aligned_data, np.memmap)
