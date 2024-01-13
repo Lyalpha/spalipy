@@ -20,6 +20,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import Optional, Union
+from pathlib import Path
 
 import numpy as np
 import sep
@@ -221,6 +222,11 @@ class Spalipy:
         Additionally, create output np.ndarrays as np.memmap temporary files.
         See `tempfile` documentation for default temp directory search
         configurations.
+    temp_file : str or Path, optional (default=None)
+        explicit temporary file write location for `use_memmap` functionality.
+        If None, environment variables TMPDIR,TEMP,TMP will be checked before
+        defaulting to platform-specific temp file locations (e.g. /tmp).
+        See `tempfile` documentation for further details.
     thread_pool_max : int, optional (default=None)
         If >1, submit `thread_pool_max` worker threads to process image
         transform alignments to template, otherwise do not multi-thread.
@@ -263,6 +269,7 @@ class Spalipy:
         skip_checking: bool = False,
         copy: bool = True,
         use_memmap: bool = False,
+        temp_dir: Union[Path, str, None] = None,
         thread_pool_max: Optional[int] = None,
     ):
         self.n_det = n_det
@@ -285,6 +292,14 @@ class Spalipy:
         self.cval = cval
         self.cval_mask = cval_mask
         self.use_memmap = use_memmap
+        if temp_dir is None:
+            self.temp_dir = None
+        else:
+            if not isinstance(temp_dir, (str, Path)):
+                raise ValueError(f"`temp_dir` must be type (str, Path), got {type(temp_dir)}")
+            self.temp_dir = Path(temp_dir)
+            if not self.temp_dir.is_dir():
+                raise ValueError(f"`temp_dir` is not a valid directory: {temp_dir}")
         if isinstance(thread_pool_max, int) and thread_pool_max > 1:
             self.thread_pool_max = thread_pool_max
         else:
@@ -901,7 +916,7 @@ class Spalipy:
             ).T
             if self.use_memmap:
                 _memmap_tryfree(self._source_data[entry])
-                aligned_data = _memmap_create_temp(aligned_data)
+                aligned_data = _memmap_create_temp(aligned_data, temp_dir=self.temp_dir)
             if self._source_mask[entry] is not None:
                 aligned_mask = map_coordinates(
                     self._source_mask[entry].T,
@@ -911,7 +926,7 @@ class Spalipy:
                 ).T
                 if self.use_memmap:
                     _memmap_tryfree(self._source_mask[entry])
-                    aligned_mask = _memmap_create_temp(aligned_mask)
+                    aligned_mask = _memmap_create_temp(aligned_mask, temp_dir=self.temp_dir)
         else:
             logging.info("Applying affine transformation to source_data")
             matrix, offset = self._affine_transform[entry].inverse().matrix_form()
@@ -925,7 +940,7 @@ class Spalipy:
             )
             if self.use_memmap:
                 _memmap_tryfree(self._source_data[entry])
-                aligned_data = _memmap_create_temp(aligned_data)
+                aligned_data = _memmap_create_temp(aligned_data, temp_dir=self.temp_dir)
             if self._source_mask[entry] is not None:
                 aligned_mask = interpolation.affine_transform(
                     self._source_mask[entry],
@@ -937,7 +952,7 @@ class Spalipy:
                 )
                 if self.use_memmap:
                     _memmap_tryfree(self._source_mask[entry])
-                    aligned_mask = _memmap_create_temp(aligned_mask)
+                    aligned_mask = _memmap_create_temp(aligned_mask, temp_dir=self.temp_dir)
 
         return aligned_data, aligned_mask
 

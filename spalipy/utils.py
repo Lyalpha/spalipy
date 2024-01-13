@@ -4,6 +4,7 @@ from typing import Any, Union
 import mmap
 import numpy as np
 import tempfile
+from pathlib import Path
 
 
 def _c_array_prep(array: Union[np.ndarray, np.memmap]) -> Union[np.ndarray, np.memmap]:
@@ -32,17 +33,20 @@ def _memmap_tryfree(obj: Any) -> bool:
     return False
 
 
-def _memmap_create_temp(ndarray_to_save: np.ndarray) -> np.memmap:
+def _memmap_create_temp(ndarray_to_save: np.ndarray, temp_dir: Union[Path, str, None] = None) -> np.memmap:
     """Create and return temporary file np.memmap object using defaults as per tempfile.
-    Temp file will be unlinked on exit but will persist for use until memmap is garbage collected.
+    Temp file will not have a visible entry in the filesystem, will persist until the file descriptor is closed.
+    Storage path is temp_dir, or if None environment variables TMPDIR, TEMP or TMP will be used,
+    else if these or not set see Python `tempfile` documentation for platform-specific
+    default locations. This is typically /tmp for Linux.
     """
     if not isinstance(ndarray_to_save, np.ndarray):
         raise ValueError("ndarray_to_save must be np.ndarray object.")
-    tmp_file = tempfile.NamedTemporaryFile(
+    tmp_file = tempfile.TemporaryFile(
         mode="w+b",
         prefix=rf"spalipy_{int(time())}_",
         suffix=r".dat",
-        delete=True,
+        dir=temp_dir,
     )
     tmp_file.write(ndarray_to_save.tobytes(order="C"))
     tmp_file.seek(0)
