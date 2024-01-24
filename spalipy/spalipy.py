@@ -222,7 +222,7 @@ class Spalipy:
         Additionally, create output np.ndarrays as np.memmap temporary files.
         See `tempfile` documentation for default temp directory search
         configurations.
-    temp_file : str or Path, optional (default=None)
+    temp_dir : str or Path, optional (default=None)
         explicit temporary file write location for `use_memmap` functionality.
         If None, environment variables TMPDIR,TEMP,TMP will be checked before
         defaulting to platform-specific temp file locations (e.g. /tmp).
