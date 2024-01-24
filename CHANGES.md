@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.3] 2024-01
+  - Fix bug where memmap files were sometimes left on the filesystem after exit.
+  - `temp_dir` argument added to `Spalipy` constructor.
+
 ## [3.5.2] - 2023-11
   - Messed up pre-commit for 3.5.1...
 
