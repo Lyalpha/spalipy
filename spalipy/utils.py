@@ -36,11 +36,13 @@ def _memmap_tryfree(obj: Any) -> bool:
 def _memmap_create_temp(
     ndarray_to_save: np.ndarray, temp_dir: Union[Path, str, None] = None
 ) -> np.memmap:
-    """Create and return temporary file np.memmap object using defaults as per tempfile.
-    Temp file will not have a visible entry in the filesystem, will persist until the file descriptor is closed.
-    Storage path is temp_dir, or if None environment variables TMPDIR, TEMP or TMP will be used,
-    else if these or not set see Python `tempfile` documentation for platform-specific
-    default locations. This is typically /tmp for Linux.
+    """
+    Create and return temporary file np.memmap object using defaults as per tempfile.
+    Temp file will not have a visible entry in the filesystem, but the file will
+    persist until the file descriptor is closed.
+    Storage path is temp_dir, or if None environment variables TMPDIR, TEMP or TMP
+    will be used, else if these or not set see Python `tempfile` documentation for
+    platform-specific default locations. This is typically /tmp for Linux.
     """
     if not isinstance(ndarray_to_save, np.ndarray):
         raise ValueError("ndarray_to_save must be np.ndarray object.")
