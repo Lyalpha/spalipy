@@ -1,5 +1,7 @@
 # spalipy
 
+<a href="https://ascl.net/2103.003"><img src="https://img.shields.io/badge/ascl-2103.003-blue.svg?colorB=262255" alt="ascl:2103.003" /></a>
+
 Detection-based astronomical image registration.
 
 Initially built from the algorithm of
