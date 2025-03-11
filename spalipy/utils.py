@@ -52,13 +52,14 @@ def _memmap_create_temp(
         suffix=r".dat",
         dir=temp_dir,
     )
-    tmp_file.write(ndarray_to_save.tobytes(order="C"))
-    tmp_file.seek(0)
-    tmp_memmap = np.memmap(
-        tmp_file,
-        mode="r+",
-        dtype=ndarray_to_save.dtype,
-        shape=ndarray_to_save.shape,
-        order="C",
-    )
+    with tmp_file:
+        tmp_file.write(ndarray_to_save.tobytes(order="C"))
+        tmp_file.seek(0)
+        tmp_memmap = np.memmap(
+            tmp_file,
+            mode="r+",
+            dtype=ndarray_to_save.dtype,
+            shape=ndarray_to_save.shape,
+            order="C",
+        )
     return tmp_memmap
