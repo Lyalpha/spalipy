@@ -26,8 +26,7 @@ import numpy as np
 import sep
 from astropy.io import fits
 from astropy.table import Table, vstack
-from scipy import linalg, interpolate
-from scipy.ndimage import interpolation, map_coordinates
+from scipy import linalg, interpolate, ndimage
 from scipy.spatial import cKDTree, distance
 
 from spalipy.utils import _c_array_prep, _memmap_tryfree, _memmap_create_temp
@@ -78,7 +77,7 @@ class AffineTransform:
 
     def matrix_form(self):
         """
-        Special output for scipy.ndimage.interpolation.affine_transform
+        Special output for scipy.ndimage.affine_transform
         Returns (matrix, offset)
         """
 
@@ -179,7 +178,7 @@ class Spalipy:
     interp_order : int, optional
         The spline order to use for interpolation - this is passed
         directly to `scipy.ndimage.affine_transform` and
-        `scipy.ndimage.interpolation.map_coordinates` as the `order`
+        `scipy.ndimage.map_coordinates` as the `order`
         argument. Must be in the range 0-5.
     sep_thresh : float, optional
         The threshold value to pass to `sep.extract()`.
@@ -908,7 +907,7 @@ class Spalipy:
             del xx, yy
             full_transform_coords_shift = self.full_transform(yyxx, entry)
             del yyxx
-            aligned_data = map_coordinates(
+            aligned_data = ndimage.map_coordinates(
                 self._source_data[entry].T,
                 full_transform_coords_shift,
                 order=self.interp_order,
@@ -918,7 +917,7 @@ class Spalipy:
                 _memmap_tryfree(self._source_data[entry])
                 aligned_data = _memmap_create_temp(aligned_data, temp_dir=self.temp_dir)
             if self._source_mask[entry] is not None:
-                aligned_mask = map_coordinates(
+                aligned_mask = ndimage.map_coordinates(
                     self._source_mask[entry].T,
                     full_transform_coords_shift,
                     order=0,
@@ -930,7 +929,7 @@ class Spalipy:
         else:
             logging.info("Applying affine transformation to source_data")
             matrix, offset = self._affine_transform[entry].inverse().matrix_form()
-            aligned_data = interpolation.affine_transform(
+            aligned_data = ndimage.affine_transform(
                 self._source_data[entry],
                 matrix.T,
                 offset=offset[::-1],
@@ -942,7 +941,7 @@ class Spalipy:
                 _memmap_tryfree(self._source_data[entry])
                 aligned_data = _memmap_create_temp(aligned_data, temp_dir=self.temp_dir)
             if self._source_mask[entry] is not None:
-                aligned_mask = interpolation.affine_transform(
+                aligned_mask = ndimage.affine_transform(
                     self._source_mask[entry],
                     matrix.T,
                     offset=offset[::-1],
@@ -1506,7 +1505,7 @@ def main(args=None):
         default=3,
         help="The spline order to use for interpolation - this is passed "
         "directly to `scipy.ndimage.affine_transform` and"
-        "`scipy.ndimage.interpolation.map_coordinates` as the `order`"
+        "`scipy.ndimage.map_coordinates` as the `order`"
         "argument. Must be in the range 0-5.",
     )
     parser.add_argument(
