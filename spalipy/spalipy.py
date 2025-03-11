@@ -61,7 +61,7 @@ class AffineTransform:
     @property
     def rotation(self):
         """Return rotation of transform in degrees"""
-        return np.deg2rad(np.arctan2(self.v[1], self.v[0]))
+        return np.rad2deg(np.arctan2(self.v[1], self.v[0]))
 
     def inverse(self):
         """Returns the inverse transform"""
