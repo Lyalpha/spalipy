@@ -1,11 +1,12 @@
 # spalipy
 
-<a href="https://ascl.net/2103.003"><img src="https://img.shields.io/badge/ascl-2103.003-blue.svg?colorB=262255" alt="ascl:2103.003" /></a>
+[![ascl](https://img.shields.io/badge/ascl-2103.003-blue.svg?colorB=262255)](https://ascl.net/2103.003)
+[![arXiv](https://img.shields.io/badge/arXiv-2603.02330-b31b1b.svg)](https://arxiv.org/abs/2603.02330)
+[![License](https://img.shields.io/pypi/l/spalipy.svg)](https://pypi.org/project/spalipy/)
 
 Detection-based astronomical image registration.
 
-Initially built from the algorithm of
-[alipy2.0](https://obswww.unige.ch/~tewes/alipy/), `spalipy` includes an
+Initially built from the algorithm of [alipy2.0](https://obswww.unige.ch/~tewes/alipy/), `spalipy` includes an
 optional additional warping of the affine transformation via splines to
 achieve accurate registration in the case of non-homogeneous coordinate
 transforms. This is particularly useful in the case of optically distorted

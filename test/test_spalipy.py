@@ -1,4 +1,3 @@
-import os
 import unittest
 
 import numpy as np
@@ -260,7 +259,7 @@ class TestSpalipy(unittest.TestCase):
         data = np.random.random((100, 100))
         memmap = _memmap_create_temp(data)
         assert isinstance(memmap, np.memmap)
-        assert not os.path.exists(memmap.filename)  # file should be unlinked
+        assert memmap.filename is None  # filename is None for temporary files
         assert np.array_equal(memmap, data)
 
     def test_memmap_align(self):
