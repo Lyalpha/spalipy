@@ -1223,8 +1223,8 @@ def quad(coo, dist):
     d = -(b * coo[0, 0] + a * coo[0, 1])
 
     t = AffineTransform((a, b, c, d))
-    (xC, yC) = t.apply_transform((coo[2, 0], coo[2, 1])).ravel()
-    (xD, yD) = t.apply_transform((coo[3, 0], coo[3, 1])).ravel()
+    xC, yC = t.apply_transform((coo[2, 0], coo[2, 1])).ravel()
+    xD, yD = t.apply_transform((coo[3, 0], coo[3, 1])).ravel()
 
     _hash = (xC, yC, xD, yD)
     # Break symmetries if needed
